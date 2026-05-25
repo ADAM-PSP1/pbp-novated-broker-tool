@@ -2,13 +2,11 @@
 //  Powered by Positive — Novated Lease Quote (PDF generator)
 //  Customer-facing 2-page A4 quote (+ optional LCA supplement page).
 //  Loads jsPDF from CDN on first call. Logo loaded from /public.
-//  Matches the design in "Powered by Positive Quote Redesign.html".
 // ─────────────────────────────────────────────────────────────────────────
 
 const LOGO_URL = "/powered-by-positive.png";
 const ECM_LEARN_MORE_URL = "https://positivesalarypackaging.com.au/employee-contribution-method/";
 
-// Palette (mirrors the design system; tuned to match the mockup)
 const C = {
   blue:    [10, 80, 211],   blueD:   [8, 64, 168],
   blue100: [225, 236, 251], blueOn:  [170, 200, 255],
@@ -57,13 +55,11 @@ function ensureJsPDF() {
   });
 }
 
-// Tiny font helpers
 function f(doc, weight) { doc.setFont("helvetica", weight || "normal"); }
 function tx(doc, color) { doc.setTextColor(...color); }
 function fi(doc, color) { doc.setFillColor(...color); }
 function dr(doc, color) { doc.setDrawColor(...color); }
 
-// Dashed horizontal line (jsPDF dashes for separators)
 function dash(doc, x1, y, x2) {
   dr(doc, C.line);
   doc.setLineWidth(0.1);
@@ -72,7 +68,7 @@ function dash(doc, x1, y, x2) {
   doc.setLineDashPattern([], 0);
 }
 
-// ───────── HEADER STRIP (used on all pages) ─────────
+// ───────── HEADER ─────────
 function drawHeader(doc, logoData, meta) {
   if (logoData) {
     doc.addImage(logoData, "PNG", M, 10, 32, 9.6);
@@ -87,7 +83,6 @@ function drawHeader(doc, logoData, meta) {
   f(doc, "normal"); doc.setFontSize(7); tx(doc, C.muted);
   doc.text(meta.tagSub || "INDICATIVE QUOTE", M + 39, 18);
 
-  // Top-right meta
   let mx = W - M;
   const rev = [...(meta.right || [])].reverse();
   rev.forEach(([k, v]) => {
@@ -95,18 +90,17 @@ function drawHeader(doc, logoData, meta) {
     doc.text(String(v), mx, 16, { align: "right" });
     f(doc, "bold"); doc.setFontSize(5.5); tx(doc, C.muted);
     doc.text(String(k).toUpperCase(), mx, 11.5, { align: "right" });
-    const tw = Math.max(doc.getTextWidth(String(v)) + 0, doc.getTextWidth(String(k))) + 8;
+    const tw = Math.max(doc.getTextWidth(String(v)), doc.getTextWidth(String(k))) + 8;
     mx -= Math.max(20, tw);
   });
 }
 
-// ───────── FOOTER STRIP (used on all pages) ─────────
+// ───────── FOOTER ─────────
 function drawFooter(doc, broker, logoData) {
   const y = 280;
   dr(doc, C.line); doc.setLineWidth(0.3);
   doc.line(M, y, W - M, y);
 
-  // Avatar (initials in circle)
   const ini = (broker.name || "Broker").split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2);
   fi(doc, C.blue);
   doc.circle(M + 3, y + 4, 2.6, "F");
@@ -144,7 +138,7 @@ function drawPage1(doc, d, logoData) {
   ).toUpperCase();
   doc.text(eyebrow, M + 3.5, y);
 
-  // Method pill (right)
+  // Method pill
   const methodLabel = isEV ? "EV · FBT EXEMPT" : "ECM · STATUTORY 20%";
   f(doc, "bold"); doc.setFontSize(6.5);
   const pillW = doc.getTextWidth(methodLabel) + 6;
@@ -159,7 +153,6 @@ function drawPage1(doc, d, logoData) {
   f(doc, "bold"); doc.setFontSize(20); tx(doc, C.ink);
   const title = doc.splitTextToSize(vehicleName || carClass, CW)[0];
   doc.text(title, M, y + 5);
-
   y += 8;
 
   // Hero subtitle
@@ -168,22 +161,19 @@ function drawPage1(doc, d, logoData) {
     " km/year  ·  paid " + cycleLabel.toLowerCase() + " from " +
     (isEV ? "pre-tax salary" : "pre-tax + post-tax salary");
   doc.text(subtitle, M, y + 4);
-
   y += 7;
 
-  // ─── Hero grid: vehicle visual + number stack ───
+  // Hero grid
   const heroH = 50;
   const heroLeftW = (CW - 6) * 0.575;
   const stackX = M + heroLeftW + 6;
   const stackW = CW - heroLeftW - 6;
 
-  // Vehicle visual (left)
   fi(doc, C.bg2); dr(doc, C.line); doc.setLineWidth(0.25);
   doc.roundedRect(M, y, heroLeftW, heroH, 4, 4, "FD");
   f(doc, "normal"); doc.setFontSize(8); tx(doc, C.muted);
   doc.text("Vehicle photo  ·  " + (vehicleName || carClass), M + heroLeftW / 2, y + heroH / 2 - 4, { align: "center" });
 
-  // Spec chips (bottom of vehicle box)
   const chips = [];
   if (d.vehicle.make)    chips.push(["MAKE", d.vehicle.make]);
   if (d.vehicle.model)   chips.push(["MODEL", d.vehicle.model]);
@@ -203,25 +193,22 @@ function drawPage1(doc, d, logoData) {
     cx += lw + 1.5;
   });
 
-  // Hero number stack — top (dark hero card)
   const numH = (heroH - 4) * 0.62;
   fi(doc, C.ink);
   doc.roundedRect(stackX, y, stackW, numH, 4, 4, "F");
   f(doc, "bold"); doc.setFontSize(6); tx(doc, C.textOnDarkM);
   doc.text("NET COST TO YOUR TAKE-HOME PAY", stackX + 4, y + 5);
-  // Big number = net wage impact per cycle
   const netPerCycle = c.pcAnnualTotal - (isEV ? c.pcTaxSavingEV : c.pcTaxSavingECM);
   f(doc, "bold"); doc.setFontSize(26); tx(doc, C.wh);
   doc.text(fmt(netPerCycle, 0), stackX + 4, y + numH / 2 + 5);
   f(doc, "normal"); doc.setFontSize(7.5); tx(doc, C.textOnDarkM);
   doc.text("per " + cycleLabel.toLowerCase() + "  ·  everything included", stackX + 4, y + numH - 3);
 
-  // Hero number stack — bottom (lime savings card)
   const savY = y + numH + 4;
   const savH = heroH - numH - 4;
   fi(doc, C.lime);
   doc.roundedRect(stackX, savY, stackW, savH, 4, 4, "F");
-  f(doc, "bold"); doc.setFontSize(6); tx(doc, [Math.round(C.ink2[0] * 0.9), Math.round(C.ink2[1] * 0.9), Math.round(C.ink2[2] * 0.9)]);
+  f(doc, "bold"); doc.setFontSize(6); tx(doc, C.ink2);
   doc.text("YOU KEEP", stackX + 4, savY + 4.5);
   f(doc, "bold"); doc.setFontSize(15); tx(doc, C.ink);
   doc.text(fmt(totalSavingOverTerm, 0), stackX + 4, savY + 11);
@@ -235,35 +222,41 @@ function drawPage1(doc, d, logoData) {
   doc.text("EVERYTHING INCLUDED IN YOUR PAYMENT", M, y);
   f(doc, "normal"); doc.setFontSize(7); tx(doc, C.muted);
   doc.text("per " + cycleLabel.toLowerCase() + ", GST-inclusive",
-    M + doc.getTextWidth("EVERYTHING INCLUDED IN YOUR PAYMENT") + 6, y);
+    M + doc.getTextWidth("EVERYTHING INCLUDED IN YOUR PAYMENT") + 5, y);
 
-  y += 3;
+  y += 3.5;
 
   function getRunning(key) {
     const r = (runningItems || []).find((x) => x.key === key);
     return r ? r.annualVal : 0;
   }
+
   const incCells = [
-    { lbl: "Lease",                            amt: (c.mFin * 12) / cycleDiv,        sub: "finance" },
-    { lbl: isEV ? "Charging" : "Fuel",         amt: annualFuel / cycleDiv,           sub: isEV ? "per km" : "@ pump" },
-    { lbl: "Rego",                             amt: getRunning("rego") / cycleDiv,   sub: customer.state || "" },
-    { lbl: "Service",                          amt: getRunning("service") / cycleDiv,sub: "scheduled" },
-    { lbl: "Insurance",                        amt: getRunning("insurance") / cycleDiv, sub: "comp." },
-    { lbl: "Tyres",                            amt: getRunning("tyres") / cycleDiv,  sub: "replace" },
-    { lbl: "Mgmt",                             amt: (mgmtFee * 12) / cycleDiv,       sub: "admin" },
+    { lbl: "Lease",                        amt: (c.mFin * 12) / cycleDiv,           icon: "LS" },
+    { lbl: isEV ? "Charging" : "Fuel",     amt: annualFuel / cycleDiv,               icon: isEV ? "EV" : "FL" },
+    { lbl: "Rego",                         amt: getRunning("rego") / cycleDiv,        icon: "RG" },
+    { lbl: "Service",                      amt: getRunning("service") / cycleDiv,     icon: "SV" },
+    { lbl: "Insurance",                    amt: getRunning("insurance") / cycleDiv,   icon: "IN" },
+    { lbl: "Tyres",                        amt: getRunning("tyres") / cycleDiv,       icon: "TR" },
+    { lbl: "Mgmt",                         amt: (mgmtFee * 12) / cycleDiv,            icon: "MG" },
   ];
-  const incCellW = (CW - 6 * 1.5) / 7;
-  const incCellH = 13;
+
+  const gap = 1.5;
+  const incCellW = (CW - gap * (incCells.length - 1)) / incCells.length;
+  const incCellH = 16;
+
   incCells.forEach((cell, i) => {
-    const ix = M + i * (incCellW + 1.5);
+    const ix = M + i * (incCellW + gap);
     fi(doc, C.bg); dr(doc, C.line); doc.setLineWidth(0.15);
     doc.roundedRect(ix, y, incCellW, incCellH, 2, 2, "FD");
     fi(doc, C.blue100);
-    doc.roundedRect(ix + 2, y + 2, 4, 4, 1, 1, "F");
+    doc.roundedRect(ix + 2, y + 2, 4.5, 4.5, 1, 1, "F");
+    f(doc, "bold"); doc.setFontSize(5.5); tx(doc, C.blue);
+    doc.text(cell.icon, ix + 4.25, y + 5.2, { align: "center" });
     f(doc, "bold"); doc.setFontSize(6.5); tx(doc, C.ink2);
-    doc.text(cell.lbl, ix + 2, y + 9);
+    doc.text(cell.lbl, ix + 2, y + 10.5);
     f(doc, "bold"); doc.setFontSize(8); tx(doc, C.blue);
-    doc.text(fmt(cell.amt, 0), ix + 2, y + 12);
+    doc.text(fmt(cell.amt, 0), ix + 2, y + 14.5);
   });
 
   y += incCellH + 6;
@@ -276,7 +269,6 @@ function drawPage1(doc, d, logoData) {
   const cmpW = (CW - 4) / 2;
   const cmpH = 28;
 
-  // Cash purchase (left)
   fi(doc, C.bg); dr(doc, C.line); doc.setLineWidth(0.15);
   doc.roundedRect(M, y, cmpW, cmpH, 3, 3, "FD");
   f(doc, "bold"); doc.setFontSize(6); tx(doc, C.muted);
@@ -285,14 +277,11 @@ function drawPage1(doc, d, logoData) {
   doc.text(fmt(c.pcAnnualTotal, 2), M + 3, y + 13);
   f(doc, "normal"); doc.setFontSize(7); tx(doc, C.muted);
   doc.text("per " + cycleLabel.toLowerCase() + " after-tax", M + 3, y + 16.5);
-  fi(doc, C.bg2);
-  doc.roundedRect(M + 3, y + 18.5, cmpW - 6, 1.6, 0.8, 0.8, "F");
   fi(doc, C.ink2);
   doc.roundedRect(M + 3, y + 18.5, cmpW - 6, 1.6, 0.8, 0.8, "F");
   f(doc, "normal"); doc.setFontSize(6.5); tx(doc, C.muted);
   doc.text("Buy from take-home — cover running costs yourself.", M + 3, y + 24.5);
 
-  // Salary package (right) — blue card
   const rx = M + cmpW + 4;
   fi(doc, C.blue);
   doc.roundedRect(rx, y, cmpW, cmpH, 3, 3, "F");
@@ -309,9 +298,8 @@ function drawPage1(doc, d, logoData) {
   doc.roundedRect(rx + 3, y + 18.5, (cmpW - 6) * ratio, 1.6, 0.8, 0.8, "F");
   f(doc, "normal"); doc.setFontSize(6.5); tx(doc, C.blueOn);
   const saved = c.pcAnnualTotal - netPerCycle;
-  const detail = "Save ~" + fmt(saved, 0) + "/" + cycleLabel.toLowerCase() +
-    " = " + fmt(totalSavingOverTerm, 0) + " over " + leaseTerm + " yrs";
-  doc.text(detail, rx + 3, y + 24.5);
+  doc.text("Save ~" + fmt(saved, 0) + "/" + cycleLabel.toLowerCase() +
+    " = " + fmt(totalSavingOverTerm, 0) + " over " + leaseTerm + " yrs", rx + 3, y + 24.5);
 
   y += cmpH + 6;
 
@@ -375,7 +363,6 @@ function drawPage2(doc, d, logoData) {
 
   let y = 28;
 
-  // Title block
   f(doc, "bold"); doc.setFontSize(7.5); tx(doc, C.blue);
   doc.text("NEXT STEP", M, y);
   f(doc, "bold"); doc.setFontSize(22); tx(doc, C.ink);
@@ -386,10 +373,9 @@ function drawPage2(doc, d, logoData) {
     CW - 20
   );
   doc.text(p2Sub, M, y + 15);
-
   y += 15 + p2Sub.length * 3.6 + 4;
 
-  // Recap band (5 cells)
+  // Recap band
   const recapH = 16;
   fi(doc, C.bg2);
   doc.roundedRect(M, y, CW, recapH, 3, 3, "F");
@@ -412,10 +398,9 @@ function drawPage2(doc, d, logoData) {
     f(doc, "normal"); doc.setFontSize(6); tx(doc, C.muted);
     doc.text(s, cx + 3, y + 13);
   });
-
   y += recapH + 4;
 
-  // ECM explainer (ECM-only)
+  // ECM explainer
   if (!isEV) {
     const ecmH = 18;
     fi(doc, C.bg); dr(doc, C.line); doc.setLineWidth(0.2);
@@ -424,7 +409,6 @@ function drawPage2(doc, d, logoData) {
     doc.roundedRect(M + 3, y + 3, 12, 12, 2, 2, "F");
     f(doc, "bold"); doc.setFontSize(9); tx(doc, C.blue);
     doc.text("ECM", M + 9, y + 10.5, { align: "center" });
-
     f(doc, "bold"); doc.setFontSize(9); tx(doc, C.ink);
     doc.text("What is the Employee Contribution Method?", M + 18, y + 6);
     f(doc, "normal"); doc.setFontSize(7.5); tx(doc, C.muted);
@@ -434,12 +418,19 @@ function drawPage2(doc, d, logoData) {
     );
     doc.text(ecmText, M + 18, y + 9.5);
 
-    // Learn more button (clickable)
+    // Learn more button — dynamic width
+    f(doc, "bold"); doc.setFontSize(7);
+    const btnLabel = "Learn more \u2192";
+    const btnTW = doc.getTextWidth(btnLabel);
+    const btnW = btnTW + 8;
+    const btnH = 7;
+    const btnX = W - M - btnW;
+    const btnY = y + 5.5;
     fi(doc, C.blue);
-    doc.roundedRect(W - M - 26, y + 5.5, 23, 7, 1.5, 1.5, "F");
-    f(doc, "bold"); doc.setFontSize(7); tx(doc, C.wh);
-    doc.text("Learn more →", W - M - 14.5, y + 9.5, { align: "center" });
-    doc.link(W - M - 26, y + 5.5, 23, 7, { url: ECM_LEARN_MORE_URL });
+    doc.roundedRect(btnX, btnY, btnW, btnH, 1.5, 1.5, "F");
+    tx(doc, C.wh);
+    doc.text(btnLabel, btnX + btnW / 2, btnY + 4.6, { align: "center" });
+    doc.link(btnX, btnY, btnW, btnH, { url: ECM_LEARN_MORE_URL });
 
     y += ecmH + 4;
   }
@@ -455,14 +446,12 @@ function drawPage2(doc, d, logoData) {
   doc.circle(M + 9, y + brH / 2, 5.8, "D");
   f(doc, "bold"); doc.setFontSize(10); tx(doc, C.wh);
   doc.text(brokerIni, M + 9, y + brH / 2 + 1.5, { align: "center" });
-
   f(doc, "bold"); doc.setFontSize(6.5); tx(doc, C.blue);
   doc.text("YOUR BROKER  ·  PRIMARY CONTACT", M + 19, y + 5);
   f(doc, "bold"); doc.setFontSize(11); tx(doc, C.ink);
   doc.text(broker.name || "Your broker", M + 19, y + 10);
   f(doc, "normal"); doc.setFontSize(7.5); tx(doc, C.muted);
   doc.text((broker.phone || "") + "  ·  " + (broker.email || ""), M + 19, y + 14);
-
   y += brH + 4;
 
   // Pathways
@@ -470,7 +459,6 @@ function drawPage2(doc, d, logoData) {
   const pwW1 = (CW - 5) * 0.58;
   const pwW2 = CW - pwW1 - 5;
 
-  // Primary
   fi(doc, C.blue);
   doc.roundedRect(M, y, pwW1, pwH, 3, 3, "F");
   f(doc, "bold"); doc.setFontSize(6); tx(doc, C.blueOn);
@@ -483,15 +471,12 @@ function drawPage2(doc, d, logoData) {
     pwW1 - 8
   );
   doc.text(pwBody, M + 4, y + 14.5);
-  // CTA button
   fi(doc, C.lime);
   doc.roundedRect(M + 4, y + pwH - 10, 44, 7, 1.5, 1.5, "F");
   f(doc, "bold"); doc.setFontSize(8); tx(doc, C.ink2);
-  doc.text("Begin application →", M + 6, y + pwH - 5.3);
-  // CTA hook — the dev can wire this URL to Salesforce
+  doc.text("Begin application \u2192", M + 6, y + pwH - 5.3);
   doc.link(M + 4, y + pwH - 10, 44, 7, { url: "#start-application" });
 
-  // Secondary
   fi(doc, C.bg2); dr(doc, C.line); doc.setLineWidth(0.2);
   doc.roundedRect(M + pwW1 + 5, y, pwW2, pwH, 3, 3, "FD");
   f(doc, "bold"); doc.setFontSize(6); tx(doc, C.muted);
@@ -504,7 +489,6 @@ function drawPage2(doc, d, logoData) {
     pwW2 - 8
   );
   doc.text(pwBody2, M + pwW1 + 9, y + 14.5);
-  // Phone block
   fi(doc, C.blue);
   doc.roundedRect(M + pwW1 + 9, y + pwH - 11, 7, 7, 1.5, 1.5, "F");
   f(doc, "bold"); doc.setFontSize(7); tx(doc, C.wh);
@@ -513,41 +497,50 @@ function drawPage2(doc, d, logoData) {
   doc.text("CALL YOUR BROKER", M + pwW1 + 18, y + pwH - 9.5);
   f(doc, "bold"); doc.setFontSize(11); tx(doc, C.ink);
   doc.text(broker.phone || "—", M + pwW1 + 18, y + pwH - 5.5);
-
   y += pwH + 5;
 
-  // Terms
+  // ─── TERMS ───
   f(doc, "bold"); doc.setFontSize(7.5); tx(doc, C.blue);
   doc.text("WHAT YOU'RE AGREEING TO WHEN YOU START", M, y);
-  y += 3.5;
+  y += 4;
+
   const termsArr = [
-    ["Privacy consent — ", "you allow your broker and Powered by Positive to collect, use and share the information needed to arrange your novated lease (insurer, financier, employer, dealer) in line with the Privacy Policy."],
+    ["Privacy consent — ",  "you allow your broker and Powered by Positive to collect, use and share the information needed to arrange your novated lease (insurer, financier, employer, dealer) in line with the Privacy Policy."],
     ["Figures ",            "are based on the vehicle pricing and salary information you provided and may change. FBT, taxation rates and tax savings shown are estimates only." + (isEV ? " EV FBT exemption applies (eligible BEVs/PHEVs under $91,387 drive-away)." : " ECM applies because this vehicle is not eligible for the EV FBT exemption.")],
     ["Lease payment ",      "is based on a 2-month deferred lease structure. All applications are subject to normal credit criteria. Powered by Positive is not a financial adviser — seek independent advice before signing."],
     ["Fees ",               "may be incurred by manufacturers or suppliers in case of cancellation or amendment after the vehicle order is placed."],
   ];
+
+  const termIndent = M + 8;
+  const termW = CW - 8;
+  const lineH = 3.2;
+  const termPad = 3;
+
   termsArr.forEach(([head, body], i) => {
     fi(doc, C.blue100);
     doc.roundedRect(M, y, 4.5, 4.5, 1.2, 1.2, "F");
     f(doc, "bold"); doc.setFontSize(6.5); tx(doc, C.blue);
     doc.text(String(i + 1), M + 2.2, y + 3.2, { align: "center" });
 
-    f(doc, "bold"); doc.setFontSize(7); tx(doc, C.ink);
-    const hw = doc.getTextWidth(head);
-    doc.text(head, M + 6.5, y + 3.2);
-    f(doc, "normal"); tx(doc, C.ink2);
-    const lines = doc.splitTextToSize(body, CW - 9 - hw);
-    doc.text(lines, M + 6.5 + hw, y + 3.2);
-    if (lines.length > 1) {
-      const extra = doc.splitTextToSize(body, CW - 9);
-      // re-render wrapped from start without head if we needed more than 1 line
-      // (simpler: just leave subsequent lines indented at M+6.5)
-      const subLines = lines.slice(1);
-      doc.text(subLines, M + 6.5, y + 3.2 + 3);
-      y += 3.2 + 3 * subLines.length + 1.8;
-    } else {
-      y += 5.5;
-    }
+    const fullText = head + body;
+    const wrapped = doc.splitTextToSize(fullText, termW);
+
+    let lineY = y + 3.2;
+    wrapped.forEach((line, li) => {
+      if (li === 0) {
+        const headWidth = doc.getTextWidth(head);
+        f(doc, "bold"); doc.setFontSize(7); tx(doc, C.ink);
+        doc.text(head, termIndent, lineY);
+        f(doc, "normal"); tx(doc, C.ink2);
+        doc.text(line.slice(head.length), termIndent + headWidth, lineY);
+      } else {
+        f(doc, "normal"); doc.setFontSize(7); tx(doc, C.ink2);
+        doc.text(line, termIndent, lineY);
+      }
+      lineY += lineH;
+    });
+
+    y += wrapped.length * lineH + termPad;
   });
 
   y += 1;
@@ -566,7 +559,6 @@ function drawPage2(doc, d, logoData) {
     CW - 6
   );
   doc.text(consLines, M + 4, y + 8);
-
   y += consH + 3;
 
   // Disclaimer
@@ -583,7 +575,7 @@ function drawPage2(doc, d, logoData) {
   drawFooter(doc, broker, logoData);
 }
 
-// ───────── PAGE 3 (LCA SUPPLEMENT) — only when LCA applies ─────────
+// ───────── PAGE 3 (LCA SUPPLEMENT) ─────────
 function drawPage3LCA(doc, d, logoData) {
   const { quoteId, quoteDate, broker, customer, leaseTerm, c, cycleLabel, cycleDiv, monthlyRunning, mgmtFee } = d;
 
@@ -604,10 +596,8 @@ function drawPage3LCA(doc, d, logoData) {
     CW - 10
   );
   doc.text(sub, M, y + 15);
-
   y += 15 + sub.length * 3.6 + 4;
 
-  // Yearly LCA table
   const yrs = (c.lca && c.lca.years) || [];
   const cols = ["Year", "Depreciation", "Interest", "Shortfall", "After-tax · gross-up"];
   const colW = CW / cols.length;
@@ -626,10 +616,10 @@ function drawPage3LCA(doc, d, logoData) {
     f(doc, "normal"); doc.setFontSize(7.5); tx(doc, C.ink2);
     doc.text("Year " + yr.yr, M + 3, y + 4);
     f(doc, "bold");
-    doc.text(fmt(yr.dep, 2),      M + colW * 2 - 3, y + 4, { align: "right" });
-    doc.text(fmt(yr.interest, 2), M + colW * 3 - 3, y + 4, { align: "right" });
-    doc.text(fmt(yr.shortfall, 2),M + colW * 4 - 3, y + 4, { align: "right" });
-    doc.text(fmt(yr.ss, 2),       M + colW * 5 - 3, y + 4, { align: "right" });
+    doc.text(fmt(yr.dep, 2),       M + colW * 2 - 3, y + 4, { align: "right" });
+    doc.text(fmt(yr.interest, 2),  M + colW * 3 - 3, y + 4, { align: "right" });
+    doc.text(fmt(yr.shortfall, 2), M + colW * 4 - 3, y + 4, { align: "right" });
+    doc.text(fmt(yr.ss, 2),        M + colW * 5 - 3, y + 4, { align: "right" });
     totDep += yr.dep; totInt += yr.interest; totSf += yr.shortfall; totSs += yr.ss;
     y += 6;
   });
@@ -644,7 +634,6 @@ function drawPage3LCA(doc, d, logoData) {
   doc.text(fmt(totSs, 2),  M + colW * 5 - 3, y + 4.6, { align: "right" });
   y += 7 + 6;
 
-  // Impact card
   const impH = 22;
   fi(doc, C.ink);
   doc.roundedRect(M, y, CW, impH, 3, 3, "F");
@@ -668,14 +657,13 @@ function drawPage3LCA(doc, d, logoData) {
   drawFooter(doc, broker, logoData);
 }
 
-// ─────────────────────────── Public API ───────────────────────────
+// ───────── Public API ─────────
 export async function generatePbpPdf(data) {
   await ensureJsPDF();
   const logoData = await loadLogo();
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "mm", format: "a4" });
 
-  // Compute headline derived figures used across pages
   const totalSavingOverTerm = (data.isEV ? data.c.taxSavingEV : data.c.taxSavingECM) * data.leaseTerm;
   const d = { ...data, totalSavingOverTerm };
 
