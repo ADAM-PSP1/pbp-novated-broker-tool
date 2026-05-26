@@ -93,13 +93,8 @@ const fmt=(n,d=0)=>new Intl.NumberFormat("en-AU",{style:"currency",currency:"AUD
 const fmtPct=n=>(n*100).toFixed(2)+"%";
 const fmtPct4=n=>(n*100).toFixed(4)+"%";
 
-// ── UI Components ─────────────────────────────────────────
 function PSPLogo({height=36}){
-  return <img
-    src="/powered-by-positive-white.png"
-    alt="Powered by Positive"
-    style={{height:height+"px",width:"auto",display:"block",userSelect:"none"}}
-  />;
+  return <img src="/powered-by-positive-white.png" alt="Powered by Positive" style={{height:height+"px",width:"auto",display:"block",userSelect:"none"}}/>;
 }
 function Lbl({children}){return <p style={{fontSize:12,fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.textMuted,marginBottom:5,letterSpacing:"0.02em",textTransform:"uppercase"}}>{children}</p>;}
 function F({label,children}){return <div><Lbl>{label}</Lbl>{children}</div>;}
@@ -251,7 +246,6 @@ export default function App(){
     const lca=calcLCA(driveaway,leaseTerm,mFin,rxg);
     const lm=lca.monthly;
     const at=(mFin+(monthlyRunning/1.1)+mgmtFee+lm)*12;
-    // FBT taxable value = 20% of full driveaway (inc GST)
     const fbtT=fbtMethod==="EV"?0:driveaway*STAT_FRACTION;
     const fbtP=fbtMethod==="ICE"?fbtT/(1-FBT_RATE)*FBT_RATE:0;
     const ecm=fbtMethod==="ECM"?fbtT:0;
@@ -302,10 +296,6 @@ export default function App(){
   function newQuote(){setEmpName("");setEmployer("");setEmpState("");setAnnualSalary(90000);setPayCycle("fortnightly");setLeaseTerm(3);setAnnualKm(15000);setVehicleMake("");setVehicleModel("");setVehicleVariant("");setCarClass("Medium Car");setFbtMethod("ECM");setDriveaway(45000);setRunningOverride({});setQuoteCommissionRate("");setEditingQuoteId(null);setTab(0);}
 
   function generatePDF(){
-    // Hands all live state to the new layout generator (see src/generatePbpPdf.js).
-    // Architecture: PDF layout lives in its own file so the design can be iterated
-    // without touching the React component. To match the redesign mockup exactly,
-    // see "Powered by Positive Quote Redesign.html" in the design package.
     generatePbpPdf({
       quoteId:    "#PBP" + String(Date.now()).slice(-6),
       quoteDate:  new Date().toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"}),
@@ -415,9 +405,9 @@ export default function App(){
             <span style={{fontSize:16,flexShrink:0,color:"#D33A2C"}}>⚠</span>
             <p style={{fontSize:12,color:"#D33A2C",fontWeight:700,lineHeight:1.6,fontFamily:"Lato,sans-serif",margin:0}}>State government employees in Victoria, New South Wales, the Northern Territory and the ACT are not eligible for third party novated leasing arrangements. Please confirm the employee's employer type before proceeding.</p>
           </div>}
-          {["WA","SA","TAS","QLD"].includes(empState)&&<div style={{marginTop:10,background:"rgba(232,162,26,0.10)",border:"1.5px solid #E8A21A",borderRadius:12,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+          {["QLD"].includes(empState)&&<div style={{marginTop:10,background:"rgba(232,162,26,0.10)",border:"1.5px solid #E8A21A",borderRadius:12,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
             <span style={{fontSize:16,flexShrink:0,color:"#E8A21A"}}>⚠</span>
-            <p style={{fontSize:12,color:"#92400e",fontWeight:700,lineHeight:1.6,fontFamily:"Lato,sans-serif",margin:0}}>State government employees in WA, SA, TAS and QLD are eligible for novated leasing, however earnings restrictions may apply under contract requirements. Commission may be reduced to $500 ex GST to meet these obligations.</p>
+            <p style={{fontSize:12,color:"#92400e",fontWeight:700,lineHeight:1.6,fontFamily:"Lato,sans-serif",margin:0}}>State government employees in QLD are eligible for novated leasing, however earnings restrictions may apply under contract requirements. Commission will be reduced to $500 ex GST to meet these obligations. A minimum brokerage floor of 2% applies for QLD state government employees.</p>
           </div>}
         </div>}
         <div style={{marginTop:14,background:PSP.blue100,border:`1.5px solid ${PSP.blue}`,borderRadius:12,padding:"10px 16px"}}>
@@ -428,7 +418,6 @@ export default function App(){
       </Card>
       <Card>
         <SectionTitle icon="⛽" title="Running costs" badge="Step 4"/>
-
         <div style={{overflowX:"auto",marginBottom:8}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,fontFamily:"Lato,sans-serif"}}>
             <thead>
