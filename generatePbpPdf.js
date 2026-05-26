@@ -23,6 +23,14 @@ const CW = W - M * 2;
 const fmt = (n, d = 0) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
 const fmtPct = (n) => (n * 100).toFixed(2) + "%";
+// "Fortnightly" is an adjective; the noun is "fortnight". Use for any "per X" /
+// "$X/X" copy where the slot needs a noun, not an adverb. Falls back to lowercase.
+const cycleNoun = (label) => ({
+  weekly: "week",
+  fortnightly: "fortnight",
+  monthly: "month",
+  "bi-monthly": "two months",
+}[String(label || "").toLowerCase()] || String(label || "").toLowerCase());
 
 let _logoCache = null;
 
@@ -61,11 +69,92 @@ function fi(doc, color) { doc.setFillColor(...color); }
 function dr(doc, color) { doc.setDrawColor(...color); }
 
 function dash(doc, x1, y, x2) {
+  // Wrap in save/restore so the dashed-line state (colour, width, dash pattern)
+  // can't leak into subsequent stroked draws.
+  doc.saveGraphicsState();
   dr(doc, C.line);
   doc.setLineWidth(0.1);
   doc.setLineDashPattern([0.6, 0.6], 0);
   doc.line(x1, y, x2, y);
-  doc.setLineDashPattern([], 0);
+  doc.restoreGraphicsState();
+}
+
+// Vector right-pointing arrow drawn at (x, y) with the given length (mm).
+// Uses the caller's current FILL colour for the head AND DRAW colour for the
+// shaft — caller must set both (fi+dr) to the same colour before calling.
+function drawArrow(doc, x, y, size) {
+  const len = size || 3.2;
+  const head = len * 0.42;
+  const lw = doc.getLineWidth();
+  doc.setLineWidth(0.45);
+  doc.line(x, y, x + len - head + 0.2, y);
+  doc.triangle(
+    x + len - head, y - head * 0.55,
+    x + len,        y,
+    x + len - head, y + head * 0.55,
+    "F"
+  );
+  doc.setLineWidth(lw);
+}
+
+// Typographic vehicle hero used when no vehicleImage is supplied.
+// Reads as intentional design, not a missing-asset placeholder.
+function drawVehicleHero(doc, x, y, w, h, name, classLabel, isEV) {
+  const stripeW = Math.min(18, w * 0.18);
+
+  // Clip to the rounded panel so fills respect the corner radius.
+  doc.saveGraphicsState();
+  doc.roundedRect(x, y, w, h, 4, 4);
+  doc.clip();
+  doc.discardPath();
+
+  fi(doc, C.blue);
+  doc.rect(x, y, w, h, "F");
+  fi(doc, C.lime);
+  doc.rect(x + w - stripeW, y, stripeW, h, "F");
+
+  doc.restoreGraphicsState();
+
+  // Outline on top (matches the original "FD" look).
+  dr(doc, C.line); doc.setLineWidth(0.25);
+  doc.roundedRect(x, y, w, h, 4, 4, "S");
+
+  // Eyebrow — class chip in white, no background.
+  f(doc, "bold"); doc.setFontSize(6); tx(doc, [255, 255, 255]);
+  const eyebrow = (isEV ? "EV  \u00b7  " : "") + String(classLabel || "").toUpperCase();
+  doc.text(eyebrow, x + 6, y + 8);
+
+  // Name — large white, up to 2 lines, vertically centred in the band between
+  // the eyebrow and the chip strip that the caller draws at y + h - 5.
+  const innerW = w - stripeW - 12;
+  f(doc, "bold"); doc.setFontSize(16); tx(doc, [255, 255, 255]);
+  const nameLines = doc.splitTextToSize(name || classLabel || "", innerW).slice(0, 2);
+  const lh = 6.5;
+  const bandTop = y + 11;
+  const bandBottom = y + h - 10;
+  const blockH = (nameLines.length - 1) * lh;
+  const startY = bandTop + (bandBottom - bandTop + blockH) / 2 - lh * 0.2;
+  nameLines.forEach((line, i) => {
+    doc.text(line, x + 6, startY - (nameLines.length - 1 - i) * lh);
+  });
+}
+
+// Draw a vehicle image clipped to the same rounded panel shape.
+function drawVehicleImage(doc, imgData, x, y, w, h) {
+  doc.saveGraphicsState();
+  doc.roundedRect(x, y, w, h, 4, 4);
+  doc.clip();
+  doc.discardPath();
+  try {
+    doc.addImage(imgData, "JPEG", x, y, w, h, undefined, "FAST");
+  } catch (e) {
+    // Fallback if the image data isn't JPEG-decodable
+    fi(doc, C.bg2);
+    doc.rect(x, y, w, h, "F");
+  }
+  doc.restoreGraphicsState();
+  dr(doc, C.line); doc.setLineWidth(0.25);
+  doc.roundedRect(x, y, w, h, 4, 4, "S");
 }
 
 // ───────── HEADER ─────────
@@ -107,21 +196,26 @@ function drawFooter(doc, broker, logoData) {
   f(doc, "bold"); doc.setFontSize(6.2); tx(doc, C.wh);
   doc.text(ini, M + 3, y + 5, { align: "center" });
 
+  // Left — broker block
+  f(doc, "bold"); doc.setFontSize(5.5); tx(doc, C.muted);
+  doc.text("YOUR BROKER", M + 8, y + 3);
   f(doc, "bold"); doc.setFontSize(7.5); tx(doc, C.ink2);
-  doc.text((broker.name || "Your broker") + "  ·  Your broker", M + 8, y + 3.5);
+  doc.text(broker.name || "Your broker", M + 8, y + 6);
   f(doc, "normal"); doc.setFontSize(6.5); tx(doc, C.muted);
-  doc.text((broker.phone || "") + "  ·  " + (broker.email || ""), M + 8, y + 6.5);
+  doc.text((broker.phone || "") + "  ·  " + (broker.email || ""), M + 8, y + 9);
 
+  // Right — Powered by Positive logo + head-office number (logo identifies the brand)
   if (logoData) doc.addImage(logoData, "PNG", W - M - 22, y + 1.5, 16, 4.8);
   f(doc, "bold"); doc.setFontSize(8); tx(doc, C.blue);
-  doc.text("1300 946 527", W - M, y + 8, { align: "right" });
+  doc.text("1300 946 527", W - M, y + 10, { align: "right" });
 }
 
 // ───────── PAGE 1 ─────────
 function drawPage1(doc, d, logoData) {
   const { quoteId, quoteDate, broker, customer, leaseTerm, annualKm, cycleLabel, cycleDiv,
           vehicleName, carClass, isEV, runningItems, monthlyRunning, mgmtFee, effectiveRate,
-          driveaway, gstClaimed, applicationFee, c, annualFuel, totalSavingOverTerm } = d;
+          driveaway, gstClaimed, applicationFee, c, annualFuel, totalSavingOverTerm,
+          gstSaving } = d;
 
   drawHeader(doc, logoData, {
     tagTitle: "NOVATED LEASE", tagSub: "INDICATIVE QUOTE",
@@ -133,8 +227,12 @@ function drawPage1(doc, d, logoData) {
   // Eyebrow
   fi(doc, C.lime); doc.circle(M + 1.4, y - 0.7, 0.9, "F");
   f(doc, "bold"); doc.setFontSize(7); tx(doc, C.blue);
-  const eyebrow = ("Prepared for " +
-    [customer.name || "Employee", customer.employer, customer.state].filter(Boolean).join("  ·  ")
+  // Eyebrow — only claim a customer name when we actually have one. Employer
+  // and state still help a broker triage a printed quote when name is missing.
+  const ctxBits = [customer.employer, customer.state].filter(Boolean);
+  const eyebrow = (customer.name
+    ? ["Prepared for " + customer.name, ...ctxBits].join("  ·  ")
+    : ["Indicative quote", ...ctxBits].join("  ·  ")
   ).toUpperCase();
   doc.text(eyebrow, M + 3.5, y);
 
@@ -149,11 +247,25 @@ function drawPage1(doc, d, logoData) {
 
   y += 5;
 
-  // Hero title
-  f(doc, "bold"); doc.setFontSize(20); tx(doc, C.ink);
-  const title = doc.splitTextToSize(vehicleName || carClass, CW)[0];
-  doc.text(title, M, y + 5);
-  y += 8;
+  // Hero title — shrink-then-wrap. Stay single-line as long as we can; allow
+  // up to 2 lines at 16pt if the name still overflows. Never truncates silently.
+  const ptMM = 0.3528;
+  const titleText = vehicleName || carClass;
+  let titleSize = 16;
+  for (const sz of [20, 18, 16]) {
+    f(doc, "bold"); doc.setFontSize(sz);
+    if (doc.getTextWidth(titleText) <= CW) { titleSize = sz; break; }
+    titleSize = sz;
+  }
+  f(doc, "bold"); doc.setFontSize(titleSize); tx(doc, C.ink);
+  const titleLines = doc.getTextWidth(titleText) <= CW
+    ? [titleText]
+    : doc.splitTextToSize(titleText, CW).slice(0, 2);
+  const titleLH = titleSize * ptMM * 1.15;  // 1.15 leading factor
+  titleLines.forEach((line, i) => {
+    doc.text(line, M, y + 5 + i * titleLH);
+  });
+  y += 8 + (titleLines.length - 1) * titleLH;
 
   // Hero subtitle
   f(doc, "normal"); doc.setFontSize(9); tx(doc, C.muted);
@@ -170,9 +282,11 @@ function drawPage1(doc, d, logoData) {
   const stackW = CW - heroLeftW - 6;
 
   fi(doc, C.bg2); dr(doc, C.line); doc.setLineWidth(0.25);
-  doc.roundedRect(M, y, heroLeftW, heroH, 4, 4, "FD");
-  f(doc, "normal"); doc.setFontSize(8); tx(doc, C.muted);
-  doc.text("Vehicle photo  ·  " + (vehicleName || carClass), M + heroLeftW / 2, y + heroH / 2 - 4, { align: "center" });
+  if (d.vehicleImage) {
+    drawVehicleImage(doc, d.vehicleImage, M, y, heroLeftW, heroH);
+  } else {
+    drawVehicleHero(doc, M, y, heroLeftW, heroH, vehicleName || carClass, carClass, isEV);
+  }
 
   const chips = [];
   if (d.vehicle.make)    chips.push(["MAKE", d.vehicle.make]);
@@ -202,7 +316,7 @@ function drawPage1(doc, d, logoData) {
   f(doc, "bold"); doc.setFontSize(26); tx(doc, C.wh);
   doc.text(fmt(netPerCycle, 0), stackX + 4, y + numH / 2 + 5);
   f(doc, "normal"); doc.setFontSize(7.5); tx(doc, C.textOnDarkM);
-  doc.text("per " + cycleLabel.toLowerCase() + "  ·  everything included", stackX + 4, y + numH - 3);
+  doc.text("per " + cycleNoun(cycleLabel) + "  ·  everything included", stackX + 4, y + numH - 3);
 
   const savY = y + numH + 4;
   const savH = heroH - numH - 4;
@@ -213,7 +327,10 @@ function drawPage1(doc, d, logoData) {
   f(doc, "bold"); doc.setFontSize(15); tx(doc, C.ink);
   doc.text(fmt(totalSavingOverTerm, 0), stackX + 4, savY + 11);
   f(doc, "normal"); doc.setFontSize(7); tx(doc, C.ink2);
-  doc.text("in tax savings over " + leaseTerm + " years", stackX + 4, savY + 15);
+  doc.text(
+    "tax savings over " + leaseTerm + " yrs  ·  + " + fmt(gstSaving, 0) + " GST claimed",
+    stackX + 4, savY + 15
+  );
 
   y = y + heroH + 6;
 
@@ -221,7 +338,7 @@ function drawPage1(doc, d, logoData) {
   f(doc, "bold"); doc.setFontSize(7.5); tx(doc, C.blue);
   doc.text("EVERYTHING INCLUDED IN YOUR PAYMENT", M, y);
   f(doc, "normal"); doc.setFontSize(7); tx(doc, C.muted);
-  doc.text("per " + cycleLabel.toLowerCase() + ", GST-inclusive",
+  doc.text("per " + cycleNoun(cycleLabel) + ", GST-inclusive",
     M + doc.getTextWidth("EVERYTHING INCLUDED IN YOUR PAYMENT") + 5, y);
 
   y += 3.5;
@@ -274,9 +391,9 @@ function drawPage1(doc, d, logoData) {
   f(doc, "bold"); doc.setFontSize(6); tx(doc, C.muted);
   doc.text("CASH PURCHASE", M + 3, y + 4.5);
   f(doc, "bold"); doc.setFontSize(16); tx(doc, C.ink);
-  doc.text(fmt(c.pcAnnualTotal, 2), M + 3, y + 13);
+  doc.text(fmt(c.pcAnnualTotal, 0), M + 3, y + 13);
   f(doc, "normal"); doc.setFontSize(7); tx(doc, C.muted);
-  doc.text("per " + cycleLabel.toLowerCase() + " after-tax", M + 3, y + 16.5);
+  doc.text("per " + cycleNoun(cycleLabel) + " after-tax", M + 3, y + 16.5);
   fi(doc, C.ink2);
   doc.roundedRect(M + 3, y + 18.5, cmpW - 6, 1.6, 0.8, 0.8, "F");
   f(doc, "normal"); doc.setFontSize(6.5); tx(doc, C.muted);
@@ -286,11 +403,11 @@ function drawPage1(doc, d, logoData) {
   fi(doc, C.blue);
   doc.roundedRect(rx, y, cmpW, cmpH, 3, 3, "F");
   f(doc, "bold"); doc.setFontSize(6); tx(doc, C.blueOn);
-  doc.text(isEV ? "SALARY PACKAGE · EV EXEMPT" : "SALARY PACKAGE VIA ECM", rx + 3, y + 4.5);
+  doc.text(isEV ? "SALARY PACKAGE · FBT EXEMPT" : "SALARY PACKAGE · ECM", rx + 3, y + 4.5);
   f(doc, "bold"); doc.setFontSize(16); tx(doc, C.lime);
-  doc.text(fmt(netPerCycle, 2), rx + 3, y + 13);
+  doc.text(fmt(netPerCycle, 0), rx + 3, y + 13);
   f(doc, "normal"); doc.setFontSize(7); tx(doc, C.blueOn);
-  doc.text("per " + cycleLabel.toLowerCase() + " to take-home", rx + 3, y + 16.5);
+  doc.text("per " + cycleNoun(cycleLabel) + " to take-home", rx + 3, y + 16.5);
   fi(doc, [35, 95, 195]);
   doc.roundedRect(rx + 3, y + 18.5, cmpW - 6, 1.6, 0.8, 0.8, "F");
   const ratio = Math.max(0.4, Math.min(0.99, netPerCycle / Math.max(0.01, c.pcAnnualTotal)));
@@ -298,7 +415,7 @@ function drawPage1(doc, d, logoData) {
   doc.roundedRect(rx + 3, y + 18.5, (cmpW - 6) * ratio, 1.6, 0.8, 0.8, "F");
   f(doc, "normal"); doc.setFontSize(6.5); tx(doc, C.blueOn);
   const saved = c.pcAnnualTotal - netPerCycle;
-  doc.text("Save ~" + fmt(saved, 0) + "/" + cycleLabel.toLowerCase() +
+  doc.text("Save ~" + fmt(saved, 0) + "/" + cycleNoun(cycleLabel) +
     " = " + fmt(totalSavingOverTerm, 0) + " over " + leaseTerm + " yrs", rx + 3, y + 24.5);
 
   y += cmpH + 6;
@@ -358,7 +475,9 @@ function drawPage2(doc, d, logoData) {
 
   drawHeader(doc, logoData, {
     tagTitle: "NEXT STEP", tagSub: "Quote " + quoteId,
-    right: [["Customer", customer.name || "—"], ["Issued", quoteDate]],
+    right: customer.name
+      ? [["Customer", customer.name], ["Issued", quoteDate]]
+      : [["Issued", quoteDate]],
   });
 
   let y = 28;
@@ -384,9 +503,9 @@ function drawPage2(doc, d, logoData) {
   const recapCells = [
     ["Vehicle", veh, "", null],
     ["Term · KM", leaseTerm + " yrs · " + Math.round(annualKm / 1000) + "k", "per year", null],
-    ["Method", isEV ? "EV Exempt" : "ECM", isEV ? "FBT free" : "Statutory 20%", null],
-    [cycleLabel, fmt(netPerCycle, 2), "net to take-home", C.blue],
-    [leaseTerm + "-yr saving", fmt(totalSavingOverTerm + gstSaving, 0), "tax + GST", C.limeD],
+    ["Method", isEV ? "EV" : "ECM", isEV ? "FBT exempt" : "Statutory 20%", null],
+    ["Per " + cycleNoun(cycleLabel), fmt(netPerCycle, 0), "net to take-home", C.blue],,
+    [leaseTerm + "-yr saving", fmt(totalSavingOverTerm, 0), "+ " + fmt(gstSaving, 0) + " GST", C.limeD],
   ];
   const rcW = CW / 5;
   recapCells.forEach(([k, v, s, color], i) => {
@@ -420,8 +539,9 @@ function drawPage2(doc, d, logoData) {
 
     // Learn more button — dynamic width
     f(doc, "bold"); doc.setFontSize(7);
-    const btnLabel = "Learn more \u2192";
-    const btnTW = doc.getTextWidth(btnLabel);
+    const btnLabel = "Learn more";
+    const arrowGap = 4.2;
+    const btnTW = doc.getTextWidth(btnLabel) + arrowGap;
     const btnW = btnTW + 8;
     const btnH = 7;
     const btnX = W - M - btnW;
@@ -429,7 +549,11 @@ function drawPage2(doc, d, logoData) {
     fi(doc, C.blue);
     doc.roundedRect(btnX, btnY, btnW, btnH, 1.5, 1.5, "F");
     tx(doc, C.wh);
-    doc.text(btnLabel, btnX + btnW / 2, btnY + 4.6, { align: "center" });
+    const labelW = doc.getTextWidth(btnLabel);
+    const contentX = btnX + (btnW - btnTW) / 2;
+    doc.text(btnLabel, contentX, btnY + 4.6);
+    fi(doc, C.wh); dr(doc, C.wh);
+    drawArrow(doc, contentX + labelW + 1.2, btnY + 3.6, 3);
     doc.link(btnX, btnY, btnW, btnH, { url: ECM_LEARN_MORE_URL });
 
     y += ecmH + 4;
@@ -472,10 +596,12 @@ function drawPage2(doc, d, logoData) {
   );
   doc.text(pwBody, M + 4, y + 14.5);
   fi(doc, C.lime);
-  doc.roundedRect(M + 4, y + pwH - 10, 44, 7, 1.5, 1.5, "F");
+  doc.roundedRect(M + 4, y + pwH - 10, 50, 7, 1.5, 1.5, "F");
   f(doc, "bold"); doc.setFontSize(8); tx(doc, C.ink2);
-  doc.text("Begin application \u2192", M + 6, y + pwH - 5.3);
-  doc.link(M + 4, y + pwH - 10, 44, 7, { url: "#start-application" });
+  doc.text("Begin application", M + 6, y + pwH - 5.3);
+  fi(doc, C.ink2); dr(doc, C.ink2);
+  drawArrow(doc, M + 6 + doc.getTextWidth("Begin application") + 1.6, y + pwH - 6.3, 3.2);
+  doc.link(M + 4, y + pwH - 10, 50, 7, { url: "#start-application" });
 
   fi(doc, C.bg2); dr(doc, C.line); doc.setLineWidth(0.2);
   doc.roundedRect(M + pwW1 + 5, y, pwW2, pwH, 3, 3, "FD");
@@ -489,14 +615,12 @@ function drawPage2(doc, d, logoData) {
     pwW2 - 8
   );
   doc.text(pwBody2, M + pwW1 + 9, y + 14.5);
-  fi(doc, C.blue);
-  doc.roundedRect(M + pwW1 + 9, y + pwH - 11, 7, 7, 1.5, 1.5, "F");
-  f(doc, "bold"); doc.setFontSize(7); tx(doc, C.wh);
-  doc.text("\u260E", M + pwW1 + 12.5, y + pwH - 6.5, { align: "center" });
+  // Option B — phone CTA. Icon box removed for clarity; the label + phone
+  // number carry the call-to-action on their own.
   f(doc, "bold"); doc.setFontSize(5.5); tx(doc, C.muted);
-  doc.text("CALL YOUR BROKER", M + pwW1 + 18, y + pwH - 9.5);
+  doc.text("CALL YOUR BROKER", M + pwW1 + 9, y + pwH - 9.5);
   f(doc, "bold"); doc.setFontSize(11); tx(doc, C.ink);
-  doc.text(broker.phone || "—", M + pwW1 + 18, y + pwH - 5.5);
+  doc.text(broker.phone || "—", M + pwW1 + 9, y + pwH - 5.5);
   y += pwH + 5;
 
   // ─── TERMS ───
@@ -517,30 +641,36 @@ function drawPage2(doc, d, logoData) {
   const termPad = 3;
 
   termsArr.forEach(([head, body], i) => {
+    // Number badge
     fi(doc, C.blue100);
     doc.roundedRect(M, y, 4.5, 4.5, 1.2, 1.2, "F");
     f(doc, "bold"); doc.setFontSize(6.5); tx(doc, C.blue);
     doc.text(String(i + 1), M + 2.2, y + 3.2, { align: "center" });
 
-    const fullText = head + body;
-    const wrapped = doc.splitTextToSize(fullText, termW);
+    // ALL term type renders at 7pt — set BEFORE measuring/wrapping so the
+    // widths match what gets drawn. splitTextToSize uses the live font state.
+    doc.setFontSize(7);
 
-    let lineY = y + 3.2;
-    wrapped.forEach((line, li) => {
-      if (li === 0) {
-        const headWidth = doc.getTextWidth(head);
-        f(doc, "bold"); doc.setFontSize(7); tx(doc, C.ink);
-        doc.text(head, termIndent, lineY);
-        f(doc, "normal"); tx(doc, C.ink2);
-        doc.text(line.slice(head.length), termIndent + headWidth, lineY);
-      } else {
-        f(doc, "normal"); doc.setFontSize(7); tx(doc, C.ink2);
-        doc.text(line, termIndent, lineY);
-      }
-      lineY += lineH;
+    f(doc, "bold");
+    const headWidth = doc.getTextWidth(head);
+
+    f(doc, "normal");
+    // First line shares its row with the bold head → narrower target width.
+    // Remaining lines get the full column width.
+    const firstFit  = doc.splitTextToSize(body, termW - headWidth)[0] || "";
+    const remainder = body.slice(firstFit.length).replace(/^\s+/, "");
+    const restLines = remainder ? doc.splitTextToSize(remainder, termW) : [];
+
+    const lineY = y + 3.2;
+    f(doc, "bold"); tx(doc, C.ink);
+    doc.text(head, termIndent, lineY);
+    f(doc, "normal"); tx(doc, C.ink2);
+    doc.text(firstFit, termIndent + headWidth, lineY);
+    restLines.forEach((line, k) => {
+      doc.text(line, termIndent, lineY + (k + 1) * lineH);
     });
 
-    y += wrapped.length * lineH + termPad;
+    y += (1 + restLines.length) * lineH + termPad;
   });
 
   y += 1;
@@ -581,7 +711,9 @@ function drawPage3LCA(doc, d, logoData) {
 
   drawHeader(doc, logoData, {
     tagTitle: "SUPPLEMENT", tagSub: "Luxury car adjustment",
-    right: [["Customer", customer.name || "—"], ["Quote", quoteId], ["Issued", quoteDate]],
+    right: customer.name
+      ? [["Customer", customer.name], ["Quote", quoteId], ["Issued", quoteDate]]
+      : [["Quote", quoteId], ["Issued", quoteDate]],
   });
 
   let y = 28;
@@ -639,9 +771,9 @@ function drawPage3LCA(doc, d, logoData) {
   doc.roundedRect(M, y, CW, impH, 3, 3, "F");
   const monthlyWithoutLca = (c.mFin + monthlyRunning / 1.1 + mgmtFee) * 12 / cycleDiv;
   const impCells = [
-    ["Without LCA",       fmt(monthlyWithoutLca, 2), "per " + cycleLabel.toLowerCase(), C.wh],
-    ["LCA add-on",        "+" + fmt(c.pcLca, 2),     "extra per " + cycleLabel.toLowerCase(), C.orange],
-    ["With LCA (page 1)", fmt(c.pcAnnualTotal, 2),   "per " + cycleLabel.toLowerCase(), C.wh],
+    ["Without LCA",       fmt(monthlyWithoutLca, 0), "per " + cycleNoun(cycleLabel), C.wh],
+    ["LCA add-on",        "+" + fmt(c.pcLca, 0),     "extra per " + cycleNoun(cycleLabel), C.orange],
+    ["With LCA (page 1)", fmt(c.pcAnnualTotal, 0),   "per " + cycleNoun(cycleLabel), C.wh],
   ];
   const impCellW = CW / 3;
   impCells.forEach(([k, v, s, color], i) => {
