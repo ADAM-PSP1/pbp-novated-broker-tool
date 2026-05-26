@@ -92,6 +92,8 @@ function calcLCA(driveaway,leaseTerm,mFin,residualExGST){
 const fmt=(n,d=0)=>new Intl.NumberFormat("en-AU",{style:"currency",currency:"AUD",minimumFractionDigits:d,maximumFractionDigits:d}).format(n);
 const fmtPct=n=>(n*100).toFixed(2)+"%";
 const fmtPct4=n=>(n*100).toFixed(4)+"%";
+// "Fortnightly" is an adjective; the noun is "fortnight". Use in "per X" / "$X/X" copy.
+const cycleNoun=label=>({weekly:"week",fortnightly:"fortnight",monthly:"month","bi-monthly":"two months"}[String(label||"").toLowerCase()]||String(label||"").toLowerCase());
 
 function PSPLogo({height=36}){
   return <img src="/powered-by-positive-white.png" alt="Powered by Positive" style={{height:height+"px",width:"auto",display:"block",userSelect:"none"}}/>;
@@ -605,7 +607,7 @@ export default function App(){
     return <div>
       <div style={{background:PSP.blue100,border:`1.5px solid ${PSP.blue}`,borderRadius:12,padding:"10px 16px",marginBottom:14,display:"flex",gap:8,alignItems:"center"}}>
         <span style={{fontSize:13,fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.blue}}>Pay cycle: {cycleLabel}</span>
-        <span style={{fontSize:12,color:PSP.textMuted,fontFamily:"Lato,sans-serif"}}>— figures shown per {cycleLabel.toLowerCase()} period</span>
+        <span style={{fontSize:12,color:PSP.textMuted,fontFamily:"Lato,sans-serif"}}>— figures shown per {cycleNoun(cycleLabel)}</span>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12,marginBottom:16}}>
         <StatCard label={cycleLabel+" tax saving"} value={fmt(isEV?c.pcTaxSavingEV:c.pcTaxSavingECM)} green sub={fmt(isEV?c.taxSavingEV:c.taxSavingECM)+" per year"}/>
@@ -770,13 +772,13 @@ export default function App(){
             {runningItems.map(({key,annualVal})=>(
               <tr key={key} style={{borderBottom:`1px solid ${PSP.border}`}}>
                 <td style={{padding:"8px 0",color:PSP.text}}>{key==="fuel"?(isEV?"Charging":"Fuel"):key==="rego"?"Registration":key==="insurance"?"Insurance":key==="service"?"Service / maintenance":"Tyres"}</td>
-                <td style={{padding:"8px 0",textAlign:"right",fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.blue}}>{fmt(annualVal/cycleDiv)}/{cycleLabel.toLowerCase()}</td>
+                <td style={{padding:"8px 0",textAlign:"right",fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.blue}}>{fmt(annualVal/cycleDiv)}/{cycleNoun(cycleLabel)}</td>
                 <td style={{padding:"8px 0",textAlign:"right",color:PSP.textMuted}}>{fmt(annualVal)}/yr</td>
               </tr>
             ))}
             <tr style={{background:PSP.limeTint}}>
               <td style={{padding:"8px 0",fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.dark}}>Total running</td>
-              <td style={{padding:"8px 0",textAlign:"right",fontFamily:"Outfit,sans-serif",fontWeight:800,color:PSP.dark}}>{fmt(annualRunning/cycleDiv)}/{cycleLabel.toLowerCase()}</td>
+              <td style={{padding:"8px 0",textAlign:"right",fontFamily:"Outfit,sans-serif",fontWeight:800,color:PSP.dark}}>{fmt(annualRunning/cycleDiv)}/{cycleNoun(cycleLabel)}</td>
               <td style={{padding:"8px 0",textAlign:"right",fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.dark}}>{fmt(annualRunning)}/yr</td>
             </tr>
           </tbody>
