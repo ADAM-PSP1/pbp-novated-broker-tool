@@ -409,7 +409,7 @@ export default function App(){
           </div>}
           {["QLD"].includes(empState)&&<div style={{marginTop:10,background:"rgba(232,162,26,0.10)",border:"1.5px solid #E8A21A",borderRadius:12,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
             <span style={{fontSize:16,flexShrink:0,color:"#E8A21A"}}>⚠</span>
-            <p style={{fontSize:12,color:"#92400e",fontWeight:700,lineHeight:1.6,fontFamily:"Lato,sans-serif",margin:0}}>State government employees in QLD are eligible for novated leasing, however earnings restrictions may apply under contract requirements. Commission will be reduced to $500 inc GST to meet these obligations. A minimum brokerage floor of 2% applies for QLD state government employees.</p>
+            <p style={{fontSize:12,color:"#92400e",fontWeight:700,lineHeight:1.6,fontFamily:"Lato,sans-serif",margin:0}}>State government employees in QLD are eligible for novated leasing, however earnings restrictions may apply under contract requirements. Commission will be reduced to $500 ex GST to meet these obligations. A minimum brokerage floor of 2% applies for QLD state government employees.</p>
           </div>}
         </div>}
         <div style={{marginTop:14,background:PSP.blue100,border:`1.5px solid ${PSP.blue}`,borderRadius:12,padding:"10px 16px"}}>
