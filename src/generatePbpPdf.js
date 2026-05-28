@@ -79,6 +79,89 @@ function dash(doc, x1, y, x2) {
   doc.restoreGraphicsState();
 }
 
+// Small pictogram inside a soft circular badge — used in the "Everything
+// included" cells on page 1. Outline icons matching Lucide-style SVGs in the
+// redesign HTML mockup. (cx, cy) is the badge centre; icon spans ~1.4 * r.
+function drawInclusionIcon(doc, cx, cy, r, type) {
+  fi(doc, C.blue100);
+  doc.circle(cx, cy, r, "F");
+  dr(doc, C.blue); fi(doc, C.blue100);
+  doc.setLineWidth(0.32);
+  doc.setLineCap("round");
+  doc.setLineJoin("round");
+  const s = (r * 1.45) / 24;
+  const X = (vbx) => cx + (vbx - 12) * s;
+  const Y = (vby) => cy + (vby - 12) * s;
+  const L = (x1, y1, x2, y2) => doc.line(X(x1), Y(y1), X(x2), Y(y2));
+  const C2 = (vbx, vby, vbr) => doc.circle(X(vbx), Y(vby), vbr * s, "S");
+  switch (type) {
+    case "car": {
+      doc.roundedRect(X(3), Y(14), 18 * s, 5 * s, 1.5 * s, 1.5 * s, "S");
+      doc.lines([[2 * s, -5 * s], [14 * s, 0], [2 * s, 5 * s]], X(3), Y(14), [1, 1], "S", false);
+      C2(7, 19, 1.6); C2(17, 19, 1.6);
+      break;
+    }
+    case "fuel": {
+      doc.lines([[11 * s, 0], [3 * s, 5 * s], [0, 6 * s], [-1 * s, 1 * s]], X(5), Y(6), [1, 1], "S", false);
+      doc.lines([[13 * s, 0], [0, 5 * s], [-9 * s, 0]], X(2), Y(13), [1, 1], "S", false);
+      C2(7, 18, 1.6); C2(16, 18, 1.6);
+      break;
+    }
+    case "bolt": {
+      doc.lines(
+        [[-9 * s, 11 * s], [8 * s, 0], [-1 * s, 7 * s], [9 * s, -11 * s], [-8 * s, 0], [1 * s, -7 * s]],
+        X(13), Y(3), [1, 1], "S", true
+      );
+      break;
+    }
+    case "plate": {
+      doc.roundedRect(X(4), Y(4), 16 * s, 16 * s, 2 * s, 2 * s, "S");
+      L(8, 9, 16, 9); L(8, 13, 16, 13); L(8, 17, 13, 17);
+      break;
+    }
+    case "wrench": {
+      C2(15, 7, 2.4);
+      const lwSaved = doc.getLineWidth();
+      doc.setLineWidth(0.55);
+      L(13, 9, 4, 18.5);
+      doc.setLineWidth(lwSaved);
+      C2(4, 18.5, 1);
+      break;
+    }
+    case "shield": {
+      doc.lines(
+        [
+          [-8 * s, 3 * s], [0, 6 * s], [4 * s, 5.5 * s],
+          [4 * s, 1.5 * s], [4 * s, -1.5 * s], [4 * s, -5.5 * s],
+          [0, -6 * s], [-8 * s, -3 * s],
+        ],
+        X(12), Y(3), [1, 1], "S", true
+      );
+      L(9, 12, 11, 14); L(11, 14, 15, 10);
+      break;
+    }
+    case "wheel": {
+      C2(12, 12, 9); C2(12, 12, 3.2);
+      L(12, 3, 12, 6);     L(12, 18, 12, 21);
+      L(3, 12, 6, 12);     L(18, 12, 21, 12);
+      L(5.6, 5.6, 7.7, 7.7);    L(16.3, 16.3, 18.4, 18.4);
+      L(5.6, 18.4, 7.7, 16.3);  L(16.3, 7.7, 18.4, 5.6);
+      break;
+    }
+    case "clock": {
+      C2(12, 12, 9);
+      L(12, 7, 12, 12); L(12, 12, 15, 14);
+      break;
+    }
+    default:
+      C2(12, 12, 4);
+  }
+  doc.setLineCap("butt");
+  doc.setLineJoin("miter");
+  doc.setLineWidth(0.15);
+  dr(doc, C.line);
+}
+
 // Vector right-pointing arrow drawn at (x, y) with the given length (mm).
 // Uses the caller's current FILL colour for the head AND DRAW colour for the
 // shaft — caller must set both (fi+dr) to the same colour before calling.
@@ -97,35 +180,47 @@ function drawArrow(doc, x, y, size) {
   doc.setLineWidth(lw);
 }
 
+// Draws a rect with square left corners and rounded right corners. Used for
+// the lime accent on the vehicle hero so the stripe's right corners pick up
+// the panel's radius without relying on PDF clipping.
+function drawRightRoundedRect(doc, x, y, w, h, r, style) {
+  const k = 0.5523;  // cubic-bezier approximation of a quarter circle
+  doc.lines(
+    [
+      [w - r, 0],
+      [k * r, 0, r, r - k * r, r, r],
+      [0, h - 2 * r],
+      [0, k * r, -(r - k * r), r, -r, r],
+      [-(w - r), 0],
+    ],
+    x, y, [1, 1], style, true
+  );
+}
+
 // Typographic vehicle hero used when no vehicleImage is supplied.
 // Reads as intentional design, not a missing-asset placeholder.
 function drawVehicleHero(doc, x, y, w, h, name, classLabel, isEV) {
-  const stripeW = Math.min(18, w * 0.18);
+  const R = 6;
+  const stripeW = Math.min(20, w * 0.18);
 
-  // Clip to the rounded panel so fills respect the corner radius.
-  doc.saveGraphicsState();
-  doc.roundedRect(x, y, w, h, 4, 4);
-  doc.clip();
-  doc.discardPath();
-
+  // Blue panel
   fi(doc, C.blue);
-  doc.rect(x, y, w, h, "F");
+  doc.roundedRect(x, y, w, h, R, R, "F");
+
+  // Lime stripe — custom path: square on left (against blue), rounded on right.
   fi(doc, C.lime);
-  doc.rect(x + w - stripeW, y, stripeW, h, "F");
+  drawRightRoundedRect(doc, x + w - stripeW, y, stripeW, h, R, "F");
 
-  doc.restoreGraphicsState();
-
-  // Outline on top (matches the original "FD" look).
+  // Outline
   dr(doc, C.line); doc.setLineWidth(0.25);
-  doc.roundedRect(x, y, w, h, 4, 4, "S");
+  doc.roundedRect(x, y, w, h, R, R, "S");
 
-  // Eyebrow — class chip in white, no background.
+  // Eyebrow
   f(doc, "bold"); doc.setFontSize(6); tx(doc, [255, 255, 255]);
   const eyebrow = (isEV ? "EV  \u00b7  " : "") + String(classLabel || "").toUpperCase();
   doc.text(eyebrow, x + 6, y + 8);
 
-  // Name — large white, up to 2 lines, vertically centred in the band between
-  // the eyebrow and the chip strip that the caller draws at y + h - 5.
+  // Name
   const innerW = w - stripeW - 12;
   f(doc, "bold"); doc.setFontSize(16); tx(doc, [255, 255, 255]);
   const nameLines = doc.splitTextToSize(name || classLabel || "", innerW).slice(0, 2);
@@ -141,20 +236,19 @@ function drawVehicleHero(doc, x, y, w, h, name, classLabel, isEV) {
 
 // Draw a vehicle image clipped to the same rounded panel shape.
 function drawVehicleImage(doc, imgData, x, y, w, h) {
+  const R = 6;
   doc.saveGraphicsState();
-  doc.roundedRect(x, y, w, h, 4, 4);
+  doc.roundedRect(x, y, w, h, R, R);
   doc.clip();
-  doc.discardPath();
   try {
     doc.addImage(imgData, "JPEG", x, y, w, h, undefined, "FAST");
   } catch (e) {
-    // Fallback if the image data isn't JPEG-decodable
     fi(doc, C.bg2);
     doc.rect(x, y, w, h, "F");
   }
   doc.restoreGraphicsState();
   dr(doc, C.line); doc.setLineWidth(0.25);
-  doc.roundedRect(x, y, w, h, 4, 4, "S");
+  doc.roundedRect(x, y, w, h, R, R, "S");
 }
 
 // ───────── HEADER ─────────
@@ -204,10 +298,13 @@ function drawFooter(doc, broker, logoData) {
   f(doc, "normal"); doc.setFontSize(6.5); tx(doc, C.muted);
   doc.text((broker.phone || "") + "  ·  " + (broker.email || ""), M + 8, y + 9);
 
-  // Right — Powered by Positive logo + head-office number (logo identifies the brand)
-  if (logoData) doc.addImage(logoData, "PNG", W - M - 22, y + 1.5, 16, 4.8);
+  // Right — PBP logo + head-office number inline on one row
+  const logoW = 18, logoH = 5.4;
+  const logoX = W - M - logoW;
+  const logoY = y + 4 - logoH / 2;
+  if (logoData) doc.addImage(logoData, "PNG", logoX, logoY, logoW, logoH);
   f(doc, "bold"); doc.setFontSize(8); tx(doc, C.blue);
-  doc.text("1300 946 527", W - M, y + 10, { align: "right" });
+  doc.text("1300 946 527", logoX - 2.5, y + 5.7, { align: "right" });
 }
 
 // ───────── PAGE 1 ─────────
@@ -328,7 +425,7 @@ function drawPage1(doc, d, logoData) {
   doc.text(fmt(totalSavingOverTerm, 0), stackX + 4, savY + 11);
   f(doc, "normal"); doc.setFontSize(7); tx(doc, C.ink2);
   doc.text(
-    "tax savings over " + leaseTerm + " yrs  ·  + " + fmt(gstSaving, 0) + " GST claimed",
+    "tax savings over " + leaseTerm + " yrs + " + fmt(gstSaving, 0) + " GST claimed",
     stackX + 4, savY + 15
   );
 
@@ -349,31 +446,28 @@ function drawPage1(doc, d, logoData) {
   }
 
   const incCells = [
-    { lbl: "Lease",                        amt: (c.mFin * 12) / cycleDiv,           icon: "LS" },
-    { lbl: isEV ? "Charging" : "Fuel",     amt: annualFuel / cycleDiv,               icon: isEV ? "EV" : "FL" },
-    { lbl: "Rego",                         amt: getRunning("rego") / cycleDiv,        icon: "RG" },
-    { lbl: "Service",                      amt: getRunning("service") / cycleDiv,     icon: "SV" },
-    { lbl: "Insurance",                    amt: getRunning("insurance") / cycleDiv,   icon: "IN" },
-    { lbl: "Tyres",                        amt: getRunning("tyres") / cycleDiv,       icon: "TR" },
-    { lbl: "Mgmt",                         amt: (mgmtFee * 12) / cycleDiv,            icon: "MG" },
+    { lbl: "Lease",                        amt: (c.mFin * 12) / cycleDiv,           icon: "car" },
+    { lbl: isEV ? "Charging" : "Fuel",     amt: annualFuel / cycleDiv,               icon: isEV ? "bolt" : "fuel" },
+    { lbl: "Rego",                         amt: getRunning("rego") / cycleDiv,        icon: "plate" },
+    { lbl: "Service",                      amt: getRunning("service") / cycleDiv,     icon: "wrench" },
+    { lbl: "Insurance",                    amt: getRunning("insurance") / cycleDiv,   icon: "shield" },
+    { lbl: "Tyres",                        amt: getRunning("tyres") / cycleDiv,       icon: "wheel" },
+    { lbl: "Mgmt",                         amt: (mgmtFee * 12) / cycleDiv,            icon: "clock" },
   ];
 
   const gap = 1.5;
   const incCellW = (CW - gap * (incCells.length - 1)) / incCells.length;
-  const incCellH = 16;
+  const incCellH = 18;
 
   incCells.forEach((cell, i) => {
     const ix = M + i * (incCellW + gap);
     fi(doc, C.bg); dr(doc, C.line); doc.setLineWidth(0.15);
     doc.roundedRect(ix, y, incCellW, incCellH, 2, 2, "FD");
-    fi(doc, C.blue100);
-    doc.roundedRect(ix + 2, y + 2, 4.5, 4.5, 1, 1, "F");
-    f(doc, "bold"); doc.setFontSize(5.5); tx(doc, C.blue);
-    doc.text(cell.icon, ix + 4.25, y + 5.2, { align: "center" });
+    drawInclusionIcon(doc, ix + incCellW / 2, y + 4.5, 2.4, cell.icon);
     f(doc, "bold"); doc.setFontSize(6.5); tx(doc, C.ink2);
-    doc.text(cell.lbl, ix + 2, y + 10.5);
+    doc.text(cell.lbl, ix + incCellW / 2, y + 11, { align: "center" });
     f(doc, "bold"); doc.setFontSize(8); tx(doc, C.blue);
-    doc.text(fmt(cell.amt, 0), ix + 2, y + 14.5);
+    doc.text(fmt(cell.amt, 0), ix + incCellW / 2, y + 15.5, { align: "center" });
   });
 
   y += incCellH + 6;
@@ -422,7 +516,7 @@ function drawPage1(doc, d, logoData) {
 
   // ─── BREAKDOWN 3 cards ───
   const bdW = (CW - 4 * 2) / 3;
-  const bdH = 32;
+  const bdH = 36;
 
   function drawBd(x, title, rows) {
     fi(doc, C.bg); dr(doc, C.line); doc.setLineWidth(0.15);
@@ -431,14 +525,19 @@ function drawPage1(doc, d, logoData) {
     doc.text(title.toUpperCase(), x + 3, y + 4);
     fi(doc, C.lime);
     doc.rect(x + 3, y + 4.5, doc.getTextWidth(title.toUpperCase()), 0.5, "F");
-    let ry = y + 7;
+    // Distribute rows evenly between title band and bottom padding so 3-row
+    // and 4-row cards align visually.
+    const contentTop = 7;
+    const contentH = bdH - contentTop - 3;
+    const rowLH = contentH / rows.length;
+    let ry = y + contentTop;
     rows.forEach(([k, v, accent]) => {
       f(doc, "normal"); doc.setFontSize(7); tx(doc, C.muted);
       doc.text(k, x + 3, ry + 2.5);
       f(doc, "bold"); tx(doc, accent || C.ink2);
       doc.text(String(v), x + bdW - 3, ry + 2.5, { align: "right" });
-      dash(doc, x + 3, ry + 4, x + bdW - 3);
-      ry += 6;
+      dash(doc, x + 3, ry + rowLH - 2, x + bdW - 3);
+      ry += rowLH;
     });
   }
 
@@ -446,12 +545,10 @@ function drawPage1(doc, d, logoData) {
     ["Drive-away",      fmt(driveaway, 2)],
     ["GST claimed",     fmt(gstClaimed, 2)],
     ["Application fee", fmt(applicationFee, 2)],
-    ["Amount financed", fmt(c.amtFin, 2)],
   ]);
   drawBd(M + bdW + 4, "Lease structure", [
     ["Term",        leaseTerm + " yrs (" + (leaseTerm * 12) + " mo)"],
     ["Kilometres",  annualKm.toLocaleString() + " / yr"],
-    ["Lessee rate", effectiveRate.toFixed(2) + "% p.a."],
     ["Residual ex GST (" + fmtPct(c.residualPct) + ")", fmt(c.residualExGST, 2)],
   ]);
   const cycShort = cycleLabel.toLowerCase() === "weekly" ? "wk" :
@@ -504,7 +601,7 @@ function drawPage2(doc, d, logoData) {
     ["Vehicle", veh, "", null],
     ["Term · KM", leaseTerm + " yrs · " + Math.round(annualKm / 1000) + "k", "per year", null],
     ["Method", isEV ? "EV" : "ECM", isEV ? "FBT exempt" : "Statutory 20%", null],
-    ["Per " + cycleNoun(cycleLabel), fmt(netPerCycle, 0), "net to take-home", C.blue],,
+    ["Per " + cycleNoun(cycleLabel), fmt(netPerCycle, 0), "net to take-home", C.blue],
     [leaseTerm + "-yr saving", fmt(totalSavingOverTerm, 0), "+ " + fmt(gstSaving, 0) + " GST", C.limeD],
   ];
   const rcW = CW / 5;
@@ -544,17 +641,17 @@ function drawPage2(doc, d, logoData) {
     const btnTW = doc.getTextWidth(btnLabel) + arrowGap;
     const btnW = btnTW + 8;
     const btnH = 7;
-    const btnX = W - M - btnW;
+    const lmX = W - M - btnW - 4;   // inset 4mm from ECM container's right edge
     const btnY = y + 5.5;
     fi(doc, C.blue);
-    doc.roundedRect(btnX, btnY, btnW, btnH, 1.5, 1.5, "F");
+    doc.roundedRect(lmX, btnY, btnW, btnH, 1.5, 1.5, "F");
     tx(doc, C.wh);
     const labelW = doc.getTextWidth(btnLabel);
-    const contentX = btnX + (btnW - btnTW) / 2;
+    const contentX = lmX + (btnW - btnTW) / 2;
     doc.text(btnLabel, contentX, btnY + 4.6);
     fi(doc, C.wh); dr(doc, C.wh);
     drawArrow(doc, contentX + labelW + 1.2, btnY + 3.6, 3);
-    doc.link(btnX, btnY, btnW, btnH, { url: ECM_LEARN_MORE_URL });
+    doc.link(lmX, btnY, btnW, btnH, { url: ECM_LEARN_MORE_URL });
 
     y += ecmH + 4;
   }
@@ -579,7 +676,7 @@ function drawPage2(doc, d, logoData) {
   y += brH + 4;
 
   // Pathways
-  const pwH = 30;
+  const pwH = 36;
   const pwW1 = (CW - 5) * 0.58;
   const pwW2 = CW - pwW1 - 5;
 
