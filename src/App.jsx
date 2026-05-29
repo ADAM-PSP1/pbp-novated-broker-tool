@@ -95,12 +95,7 @@ const fmtPct4=n=>(n*100).toFixed(4)+"%";
 
 // ── UI Components ─────────────────────────────────────────
 function PSPLogo({height=36}){
-  const fs=Math.round(height*0.55);
-  const sub=Math.round(height*0.22);
-  return <div style={{display:"flex",flexDirection:"column",gap:2,userSelect:"none"}}>
-    <span style={{fontFamily:"'Outfit',sans-serif",fontWeight:900,fontSize:fs+"px",color:"#FFFFFA",letterSpacing:"-0.02em",lineHeight:1}}>POSITIVE</span>
-    <span style={{fontFamily:"'Outfit',sans-serif",fontWeight:600,fontSize:sub+"px",color:"#A8ABA0",letterSpacing:"0.18em",lineHeight:1}}>SALARY PACKAGING</span>
-  </div>;
+  return <img src="/powered-by-positive-white.png" alt="Powered by Positive" style={{height:height+"px",width:"auto",display:"block",userSelect:"none"}}/>;
 }
 function Lbl({children}){return <p style={{fontSize:12,fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.textMuted,marginBottom:5,letterSpacing:"0.02em",textTransform:"uppercase"}}>{children}</p>;}
 function F({label,children}){return <div><Lbl>{label}</Lbl>{children}</div>;}
