@@ -46,7 +46,6 @@ const TAX_BRACKETS=[
 const MEDICARE=0.02,FBT_RATE=0.47,STAT_FRACTION=0.20;
 const LUX_DEP_LIMIT=69674,LUX_DEP_RATE=0.25,CORP_TAX=0.30;
 const FBT_EV_CAP=91387;
-const FBT_EV_HARD_CAP=96500;
 const ADMIN_PIN="TheRabbitHole!@#$1234";
 const MAX_GST_CLAIM=6334,DEFERRED=2;
 const TABS=["Inputs","Results","Salary","Savings","Quote","Repository"];
@@ -93,10 +92,15 @@ function calcLCA(driveaway,leaseTerm,mFin,residualExGST){
 const fmt=(n,d=0)=>new Intl.NumberFormat("en-AU",{style:"currency",currency:"AUD",minimumFractionDigits:d,maximumFractionDigits:d}).format(n);
 const fmtPct=n=>(n*100).toFixed(2)+"%";
 const fmtPct4=n=>(n*100).toFixed(4)+"%";
+const cycleNoun=label=>({weekly:"week",fortnightly:"fortnight",monthly:"month","bi-monthly":"two months"}[String(label||"").toLowerCase()]||String(label||"").toLowerCase());
 
 // ── UI Components ─────────────────────────────────────────
 function PSPLogo({height=36}){
-  return <img src="/powered-by-positive-white.png" alt="Powered by Positive" style={{height:height+"px",width:"auto",display:"block",userSelect:"none"}}/>;
+  return <img
+    src="/powered-by-positive-white.svg"
+    alt="Powered by Positive"
+    style={{height:height+"px",width:"auto",display:"block",userSelect:"none"}}
+  />;
 }
 function Lbl({children}){return <p style={{fontSize:12,fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.textMuted,marginBottom:5,letterSpacing:"0.02em",textTransform:"uppercase"}}>{children}</p>;}
 function F({label,children}){return <div><Lbl>{label}</Lbl>{children}</div>;}
@@ -143,14 +147,13 @@ function MTable({rows,method}){
   </div>;
 }
 
-export default function App(){
+function App(){
   const [tab,setTab]=useState(0);
   const [showAdmin,setShowAdmin]=useState(false);
   const [adminTab,setAdminTab]=useState("config");
   const [adminPin,setAdminPin]=useState("");
   const [pinError,setPinError]=useState(false);
   const [brokerMargin,setBrokerMargin]=useState(4.22);
-  const [evEligibilityConfirmed,setEvEligibilityConfirmed]=useState(false);
   const [leaseRate,setLeaseRate]=useState(null);
   const [costOfFunds,setCostOfFunds]=useState(8.45);
   const [mgmtFee,setMgmtFee]=useState(35);
@@ -190,10 +193,8 @@ export default function App(){
 
   const isEV=fbtMethod==="EV";
   const is4WD=carClass==="4WD"||carClass==="4WD Utilities";
-  const evHardCapExceeded=carClass==="EV"&&driveaway>FBT_EV_HARD_CAP;
-  const evCapExceeded=carClass==="EV"&&(driveaway>FBT_EV_CAP||evHardCapExceeded);
-  const evNeedsConfirmation=carClass==="EV"&&driveaway>FBT_EV_CAP&&!evHardCapExceeded;
-  const fbtLocked=carClass==="EV"&&!evCapExceeded&&!(evNeedsConfirmation&&!evEligibilityConfirmed);
+  const evCapExceeded=carClass==="EV"&&driveaway>FBT_EV_CAP;
+  const fbtLocked=carClass==="EV"&&!evCapExceeded;
   const method=fbtMethod;
 
   const gstFull=Math.round(driveaway/11);
@@ -234,7 +235,6 @@ export default function App(){
     setCarClass(v);
     setFbtMethod(v==="EV"?"EV":"ECM");
     setRunningOverride({});
-    setEvEligibilityConfirmed(false);
   }
   function handleRunningOverride(key,val){setRunningOverride(p=>({...p,[key]:+val}));setShowBudgetWarning(true);}
 
@@ -303,229 +303,41 @@ export default function App(){
   function newQuote(){setEmpName("");setEmployer("");setEmpState("");setAnnualSalary(90000);setPayCycle("fortnightly");setLeaseTerm(3);setAnnualKm(15000);setVehicleMake("");setVehicleModel("");setVehicleVariant("");setCarClass("Medium Car");setFbtMethod("ECM");setDriveaway(45000);setRunningOverride({});setQuoteCommissionRate("");setEditingQuoteId(null);setTab(0);}
 
   function generatePDF(){
-    const quoteId="#PBP"+Date.now().toString().slice(-6);
-    const quoteDate=new Date().toLocaleDateString("en-AU",{day:"numeric",month:"short",year:"numeric"});
+    // Hands all live state to the new layout generator (see src/generatePbpPdf.js).
+    // Architecture: PDF layout lives in its own file so the design can be iterated
+    // without touching the React component. To match the redesign mockup exactly,
+    // see "Powered by Positive Quote Redesign.html" in the design package.
     generatePbpPdf({
-      quoteId,
-      quoteDate,
-      broker:{name:brokerName,phone:brokerPhone,email:brokerContact},
-      customer:{name:empName,employer,state:empState},
-      vehicle:{make:vehicleMake,model:vehicleModel,variant:vehicleVariant},
-      vehicleName,
-      carClass,
-      isEV,
+      quoteId:    "#PBP" + String(Date.now()).slice(-6),
+      quoteDate:  new Date().toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"}),
+      broker:     { name: brokerName, phone: brokerPhone, email: brokerContact },
+      customer:   { name: empName, employer: employer, state: empState },
+      annualSalary,
       leaseTerm,
       annualKm,
+      payCycle,
       cycleLabel,
       cycleDiv,
+      vehicle:    { make: vehicleMake, model: vehicleModel, variant: vehicleVariant },
+      vehicleName,
+      carClass,
+      fbtMethod,
+      isEV,
       driveaway,
       gstClaimed,
       applicationFee,
-      annualSalary,
+      effectiveRate,
       runningItems,
+      annualFuel,
       annualRunning,
       monthlyRunning,
       mgmtFee,
-      annualFuel,
-      effectiveRate:leaseRate!==null?leaseRate:(costOfFunds+brokerMargin),
-      c,
       gstSaving,
-      gstOnPkg,
-      mainSaving,
-      totalBenefit,
+      c,
+    }).catch(err => {
+      console.error("[PBP] PDF generation failed:", err);
+      alert("Could not generate PDF: " + (err.message || err));
     });
-  }
-  function _generatePDF_OLD(){
-    function doGen(){
-      const{jsPDF}=window.jspdf;
-      const doc=new jsPDF({unit:"mm",format:"a4"});
-      const W=210,M=16;let y=0;
-      const blue=[10,80,211],lime=[161,226,32],dark=[45,47,40],
-            page=[11,16,18],wh=[255,255,250],muted=[74,77,67],
-            blueTint=[225,236,251],limeTint=[235,248,210],border=[229,231,224];
-
-      function ap(){doc.addPage();y=16;}
-      function cy(n){if(y+(n||10)>278)ap();}
-
-      doc.setFillColor(...page);doc.rect(0,0,W,24,"F");
-      doc.setFontSize(14);doc.setFont("helvetica","bold");doc.setTextColor(...wh);
-      doc.text("POSITIVE SALARY PACKAGING",M,10);
-      doc.setFontSize(7.5);doc.setFont("helvetica","normal");doc.setTextColor(168,171,160);
-      doc.text("Novated Lease Quote",M,16);
-      doc.text(new Date().toLocaleDateString("en-AU",{day:"numeric",month:"long",year:"numeric"}),W-M,16,{align:"right"});
-      y=30;
-
-      doc.setFontSize(11);doc.setFont("helvetica","bold");doc.setTextColor(...blue);
-      doc.text("Prepared for: "+(empName||"Employee"),M,y);
-      if(employer){doc.setFontSize(9);doc.setFont("helvetica","normal");doc.setTextColor(...muted);doc.text(employer+(empState?" — "+empState:""),M,y+5);y+=5;}
-      doc.setFontSize(9);doc.setFont("helvetica","normal");doc.setTextColor(...muted);
-      doc.text(brokerName+" | "+brokerContact+" | "+brokerPhone,W-M,y,{align:"right"});
-      y+=10;
-      doc.setDrawColor(...blue);doc.setLineWidth(0.5);doc.line(M,y,W-M,y);y+=8;
-
-      doc.setFillColor(...blueTint);doc.rect(M,y,W-M*2,7,"F");
-      doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(...blue);
-      doc.text("QUOTE DETAILS",M+3,y+4.8);y+=10;
-      const details=[
-        ["Vehicle",vehicleName||"—"],["Car class",carClass+" — "+(isEV?"EV / FBT Exempt":"ECM")],
-        ["Gross annual salary",fmt(annualSalary)],["Pay cycle",cycleLabel],
-        ["Lease term",leaseTerm+" year"+(leaseTerm>1?"s":"")],["Annual km",annualKm.toLocaleString()+" km"],
-        ["Driveaway cost",fmt(driveaway)],["Application fee",fmt(applicationFee)],
-        ["ATO residual ex GST ("+fmtPct(c.residualPct)+")",fmt(c.residualExGST)],
-      ];
-      const col1=details.filter((_,i)=>i%2===0);
-      const col2=details.filter((_,i)=>i%2!==0);
-      const cw=(W-M*2-6)/2;
-      const maxRows=Math.max(col1.length,col2.length);
-      for(let i=0;i<maxRows;i++){
-        const bg=i%2===0?[248,249,246]:wh;
-        doc.setFillColor(...bg);doc.rect(M,y,W-M*2,6,"F");
-        if(col1[i]){
-          doc.setFontSize(7.5);doc.setFont("helvetica","normal");doc.setTextColor(...muted);doc.text(col1[i][0],M+2,y+4);
-          doc.setFont("helvetica","bold");doc.setTextColor(...dark);doc.text(col1[i][1],M+cw/2,y+4);
-        }
-        if(col2[i]){
-          doc.setFontSize(7.5);doc.setFont("helvetica","normal");doc.setTextColor(...muted);doc.text(col2[i][0],M+cw+6,y+4);
-          doc.setFont("helvetica","bold");doc.setTextColor(...dark);doc.text(col2[i][1],M+cw+cw/2+6,y+4);
-        }
-        y+=6;
-      }
-      y+=6;
-
-      cy(40);
-      doc.setFillColor(...blueTint);doc.rect(M,y,W-M*2,7,"F");
-      doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(...blue);
-      doc.text("NET WAGE IMPACT — "+cycleLabel.toUpperCase()+" COMPARISON",M+3,y+4.8);y+=10;
-
-      const cashCost=c.pcAnnualTotal;
-      const taxSaving=isEV?c.pcTaxSavingEV:c.pcTaxSavingECM;
-      const wageImpact=cashCost-taxSaving;
-      const thirdW=(W-M*2-8)/3;
-
-      const boxes=[
-        ["Cash purchase cost",fmt(cashCost),[248,249,246],dark],
-        ["Income tax saving "+cycBadge,fmt(taxSaving),blueTint,blue],
-        ["Impact to wage "+cycBadge,fmt(wageImpact),page,lime],
-      ];
-      boxes.forEach(([lbl,val,bg,tc],i)=>{
-        const bx=M+i*(thirdW+4);
-        doc.setFillColor(...bg);doc.roundedRect(bx,y,thirdW,16,2,2,"F");
-        doc.setFontSize(6.5);doc.setFont("helvetica","normal");doc.setTextColor(...muted);doc.text(lbl,bx+3,y+5);
-        doc.setFontSize(12);doc.setFont("helvetica","bold");doc.setTextColor(...tc);doc.text(val,bx+3,y+13);
-      });
-      y+=22;
-
-      cy(50);
-      const scols=["Item","Cash purchase",method+" novated"];
-      const srows=[
-        ["Gross salary",c.pcSalary,c.pcSalary],
-        ["Pre-tax salary sacrifice",0,isEV?c.pcSsEV:c.pcSsECM],
-        ["Income tax + Medicare",c.pcTaxGross,isEV?c.pcTaxEV:c.pcTaxECM],
-        ["Post-tax vehicle cost",c.pcAnnualTotal,isEV?0:c.pcEcm],
-        ["Net wage impact "+cycBadge,c.pcSalary-c.pcTaxGross-c.pcAnnualTotal,c.pcSalary-(isEV?c.pcTaxEV:c.pcTaxECM)-c.pcAnnualTotal],
-      ];
-      const sw1=80,sw2=(W-M*2-sw1)/2;
-      doc.setFillColor(...page);doc.rect(M,y,W-M*2,6,"F");
-      scols.forEach((h,i)=>{
-        doc.setFontSize(7);doc.setFont("helvetica","bold");
-        doc.setTextColor(i===2?lime[0]:168,i===2?lime[1]:171,i===2?lime[2]:160);
-        const x=i===0?M+2:i===1?M+sw1+sw2/2:W-M-sw2/2;
-        doc.text(h,x,y+4,{align:i===0?"left":"center"});
-      });
-      y+=6;
-      srows.forEach(([lbl,cash,nov],i)=>{
-        cy(7);
-        const isNet=lbl.startsWith("Net wage");
-        doc.setFillColor(...(isNet?limeTint:[248,249,246]));
-        doc.rect(M,y,W-M*2,6.5,"F");
-        doc.setFontSize(8);doc.setFont("helvetica",isNet?"bold":"normal");doc.setTextColor(...(isNet?dark:muted));
-        doc.text(lbl,M+2,y+4.5);
-        doc.setFont("helvetica",isNet?"bold":"normal");doc.setTextColor(...(isNet?dark:[100,100,100]));
-        doc.text(fmt(cash),M+sw1+sw2/2,y+4.5,{align:"center"});
-        doc.setTextColor(...(isNet?dark:blue));doc.setFont("helvetica","bold");
-        doc.text(fmt(nov),W-M-sw2/2,y+4.5,{align:"center"});
-        y+=6.5;
-      });
-      y+=6;
-
-      cy(40);
-      doc.setFillColor(...blueTint);doc.rect(M,y,W-M*2,7,"F");
-      doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(...blue);
-      doc.text((isEV?"CHARGING":"RUNNING")+" COSTS — "+cycleLabel.toUpperCase(),M+3,y+4.8);y+=10;
-      const rcn={fuel:isEV?"Charging":"Fuel",rego:"Registration",insurance:"Insurance",service:"Service / maintenance",tyres:"Tyres"};
-      runningItems.forEach(({key,annualVal},i)=>{
-        cy(7);
-        doc.setFillColor(...(i%2===0?[248,249,246]:wh));doc.rect(M,y,W-M*2,6,"F");
-        doc.setFontSize(8);doc.setFont("helvetica","normal");doc.setTextColor(...muted);doc.text(rcn[key],M+2,y+4);
-        doc.setFont("helvetica","bold");doc.setTextColor(...blue);
-        doc.text(fmt(annualVal/cycleDiv)+"/"+cycleLabel.toLowerCase(),W-M-40,y+4,{align:"right"});
-        doc.setFont("helvetica","normal");doc.setTextColor(...muted);
-        doc.text(fmt(annualVal)+"/yr",W-M,y+4,{align:"right"});
-        y+=6;
-      });
-      doc.setFillColor(...limeTint);doc.rect(M,y,W-M*2,6.5,"F");
-      doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(...dark);
-      doc.text("Total running",M+2,y+4.5);
-      doc.text(fmt(annualRunning/cycleDiv)+"/"+cycleLabel.toLowerCase(),W-M-40,y+4.5,{align:"right"});
-      doc.setTextColor(...dark);doc.text(fmt(annualRunning)+"/yr",W-M,y+4.5,{align:"right"});
-      y+=12;
-
-      cy(14);
-      doc.setFillColor(...blueTint);doc.rect(M,y,W-M*2,7,"F");
-      doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(...blue);
-      doc.text(method+" METHOD — "+cycleLabel.toUpperCase()+" SALARY PACKAGING SUMMARY",M+3,y+4.8);y+=10;
-      const sr=[[cycleLabel+" lease repayment",fmt(c.pcMFin)],[cycleLabel+" running costs",fmt(c.pcMonthlyRunning)],[cycleLabel+" management fee",fmt(c.pcMgmtFee)],...(c.lca&&c.lca.applies?[[cycleLabel+" luxury car adjustment",fmt(c.pcLca)]]:[]),[cycleLabel+" pre-tax salary sacrifice",fmt(isEV?c.pcSsEV:c.pcSsECM)],...(!isEV?[[cycleLabel+" post-tax contribution",fmt(c.pcEcm)]]:[]),[cycleLabel+" income tax saving",fmt(isEV?c.pcTaxSavingEV:c.pcTaxSavingECM)],[cycleLabel+" net take-home",fmt(isEV?c.pcNetEV:c.pcNetECM)],["Annual tax saving",fmt(isEV?c.taxSavingEV:c.taxSavingECM)],[leaseTerm+"-year total tax saving",fmt(isEV?c.taxSavingEV*leaseTerm:c.taxSavingECM*leaseTerm)],["GST saving (one-off)",fmt(gstSaving)],["Total benefit over "+leaseTerm+" years",fmt(totalBenefit)]];
-      sr.forEach(([k,v],i)=>{
-        cy(7);
-        const hi=k.includes("saving")||k.includes("benefit");
-        doc.setFillColor(...(hi?limeTint:i%2===0?[248,249,246]:wh));doc.rect(M,y,W-M*2,6,"F");
-        doc.setFontSize(8);doc.setFont("helvetica",hi?"bold":"normal");doc.setTextColor(...(hi?dark:muted));doc.text(k,M+2,y+4);
-        doc.setFont("helvetica","bold");doc.setTextColor(...(hi?dark:blue));doc.text(v,W-M,y+4,{align:"right"});
-        y+=6;
-      });
-      y+=6;
-
-      cy(22);
-      doc.setFillColor(...page);doc.roundedRect(M,y,W-M*2,20,3,3,"F");
-      doc.setFontSize(7.5);doc.setFont("helvetica","normal");doc.setTextColor(168,171,160);
-      doc.text("Estimated "+leaseTerm+"-year total benefit (tax saving + GST)",M+5,y+7);
-      doc.setFontSize(18);doc.setFont("helvetica","bold");doc.setTextColor(...lime);
-      doc.text(fmt(totalBenefit),M+5,y+17);
-      y+=26;
-
-      cy(20);
-      doc.setFontSize(6.5);doc.setFont("helvetica","bold");doc.setTextColor(...muted);doc.text("DISCLAIMER",M,y);y+=4;
-      doc.setFont("helvetica","normal");doc.setTextColor(120,120,120);
-      const disc="Vehicle supply is subject to availability and pricing may change. The above figures represent the estimated net impact on your income taking into account the assumed tax and GST savings. All applications are subject to normal credit criteria. Terms, conditions, fees and charges may apply. Seek independent financial advice before relying on these figures.";
-      const dl=doc.splitTextToSize(disc,W-M*2);doc.text(dl,M,y);y+=dl.length*3.2+6;
-
-      cy(50);
-      doc.setFillColor(...page);doc.rect(M,y,W-M*2,7,"F");
-      doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(...wh);doc.text("EMPLOYEE AUTHORISATION",M+3,y+4.8);y+=10;
-      doc.setFontSize(7.5);doc.setFont("helvetica","normal");doc.setTextColor(0,0,0);
-      const terms=["I acknowledge and agree to the following terms regarding the lease agreement:","1. Figures are based on vehicle pricing provided and may change based on circumstances.","2. FBT, taxation rates, and tax savings are estimates only.","3. The lease payment is based on a 2-month deferred lease structure.","4. "+brokerName+" is not a financial adviser. Seek independent financial advice.","5. Fees may be incurred by manufacturers or suppliers in case of cancellation.","","I authorise Positive Salary Packaging to proceed with the lease agreement based on the provided information."];
-      terms.forEach(t=>{if(t){const tl=doc.splitTextToSize(t,W-M*2);cy(tl.length*4+2);doc.text(tl,M,y);y+=tl.length*4+2;}else y+=2;});
-      y+=8;
-      cy(14);
-      const cw2=(W-M*2-16)/3;
-      ["Name","Signature","Date"].forEach((f,i)=>{
-        const fx=M+i*(cw2+8);
-        doc.setFontSize(7.5);doc.setFont("helvetica","bold");doc.setTextColor(...muted);doc.text(f+":",fx,y);
-        doc.setDrawColor(...blue);doc.setLineWidth(0.4);doc.line(fx,y+8,fx+cw2,y+8);
-      });
-
-      const pc2=doc.getNumberOfPages();
-      for(let i=1;i<=pc2;i++){
-        doc.setPage(i);doc.setFillColor(...page);doc.rect(0,287,W,10,"F");
-        doc.setFontSize(7);doc.setFont("helvetica","bold");doc.setTextColor(...wh);
-        doc.text("POSITIVE SALARY PACKAGING",W/2,293,{align:"center"});
-        doc.setFont("helvetica","normal");doc.setTextColor(168,171,160);
-        doc.text("Page "+i+" of "+pc2,W-M,293,{align:"right"});
-      }
-      doc.save("novated-lease-quote-"+((empName||"employee").replace(/\s+/g,"-").toLowerCase())+".pdf");
-    }
-    if(window.jspdf)doGen();
-    else{const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";s.onload=doGen;s.onerror=()=>alert("Could not load PDF library.");document.head.appendChild(s);}
   }
 
   function renderInputs(){
@@ -563,23 +375,16 @@ export default function App(){
           <F label="Variant"><input value={vehicleVariant} onChange={e=>setVehicleVariant(e.target.value)} placeholder="e.g. GXL Hybrid"/></F>
           <F label="Car class"><select value={carClass} onChange={e=>handleCarClass(e.target.value)}>{CAR_CLASS_KEYS.map(k=><option key={k} value={k}>{k}{k==="EV"?" (FBT exempt)":""}</option>)}</select></F>
           <F label="FBT method">
-            <select value={fbtMethod} onChange={e=>setFbtMethod(e.target.value)} disabled={fbtLocked||evHardCapExceeded} style={{opacity:(fbtLocked||evHardCapExceeded)?0.6:1,cursor:(fbtLocked||evHardCapExceeded)?"not-allowed":"pointer"}}>
+            <select value={fbtMethod} onChange={e=>setFbtMethod(e.target.value)} disabled={fbtLocked} style={{opacity:fbtLocked?0.6:1,cursor:fbtLocked?"not-allowed":"pointer"}}>
               <option value="ECM">ECM - Employee contribution method</option>
               <option value="EV">EV - FBT exempt</option>
             </select>
-            {fbtLocked&&!evNeedsConfirmation&&<p style={{fontSize:11,color:PSP.textMuted,fontFamily:"Lato,sans-serif",marginTop:4}}>Locked — EV FBT exemption applies under {fmt(FBT_EV_CAP)}</p>}
-            {evHardCapExceeded&&<p style={{fontSize:11,color:"#D33A2C",fontFamily:"Lato,sans-serif",marginTop:4}}>⚠ Driveaway exceeds {fmt(FBT_EV_HARD_CAP)} — ECM applies regardless of state charges.</p>}
+            {fbtLocked&&<p style={{fontSize:11,color:PSP.textMuted,fontFamily:"Lato,sans-serif",marginTop:4}}>Locked — EV FBT exemption applies under {fmt(FBT_EV_CAP)}</p>}
+            {evCapExceeded&&<p style={{fontSize:11,color:"#E8A21A",fontFamily:"Lato,sans-serif",marginTop:4}}>⚠ Driveaway exceeds FBT exemption cap ({fmt(FBT_EV_CAP)}) — ECM applies</p>}
           </F>
-          <F label="Driveaway cost ($)"><input type="number" value={driveaway} onChange={e=>{const v=+e.target.value;setDriveaway(v);setEvEligibilityConfirmed(false);if(carClass==="EV")setFbtMethod(v>FBT_EV_CAP?"ECM":"EV");}}/></F>
+          <F label="Driveaway cost ($)"><input type="number" value={driveaway} onChange={e=>{const v=+e.target.value;setDriveaway(v);if(carClass==="EV")setFbtMethod(v>FBT_EV_CAP?"ECM":"EV");}}/></F>
           <F label={"GST claimed (max "+fmt(MAX_GST_CLAIM)+")"}><input type="text" value={fmt(gstClaimed)+(gstExcess>0?" ("+fmt(gstExcess)+" financed)":"")} readOnly style={{background:PSP.blue100,color:gstExcess>0?"#E8A21A":PSP.blue,cursor:"default"}}/></F>
         </Grid>
-        {evNeedsConfirmation&&<div style={{marginTop:14,background:"rgba(232,162,26,0.10)",border:"1.5px solid #E8A21A",borderRadius:12,padding:"14px 16px"}}>
-          <p style={{fontSize:12,color:"#92400e",fontWeight:700,fontFamily:"Lato,sans-serif",marginBottom:10}}>⚠ Driveaway exceeds {fmt(FBT_EV_CAP)} — broker confirmation required to apply EV FBT exemption.</p>
-          <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}>
-            <input type="checkbox" checked={evEligibilityConfirmed} onChange={e=>{setEvEligibilityConfirmed(e.target.checked);setFbtMethod(e.target.checked?"EV":"ECM");}} style={{marginTop:2,width:"auto",flexShrink:0}}/>
-            <span style={{fontSize:12,color:"#92400e",fontFamily:"Lato,sans-serif",lineHeight:1.6}}>I confirm the vehicle's purchase price is under {fmt(FBT_EV_CAP)} excluding Rego, CTP and Govt. Stamp Duty and no LCT is incurred on the contract.</span>
-          </label>
-        </div>}
         {commissionIncluded&&<div style={{marginTop:14,padding:"16px 18px",background:PSP.limeTint,border:`1.5px solid rgba(161,226,32,0.35)`,borderRadius:16}}>
           <p style={{fontSize:13,fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.blue,marginBottom:10}}>Commission rate for this quote</p>
           <Grid>
@@ -611,9 +416,9 @@ export default function App(){
             <span style={{fontSize:16,flexShrink:0,color:"#D33A2C"}}>⚠</span>
             <p style={{fontSize:12,color:"#D33A2C",fontWeight:700,lineHeight:1.6,fontFamily:"Lato,sans-serif",margin:0}}>State government employees in Victoria, New South Wales, the Northern Territory and the ACT are not eligible for third party novated leasing arrangements. Please confirm the employee's employer type before proceeding.</p>
           </div>}
-          {["QLD"].includes(empState)&&<div style={{marginTop:10,background:"rgba(232,162,26,0.10)",border:"1.5px solid #E8A21A",borderRadius:12,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
+          {["WA","SA","TAS","QLD"].includes(empState)&&<div style={{marginTop:10,background:"rgba(232,162,26,0.10)",border:"1.5px solid #E8A21A",borderRadius:12,padding:"12px 14px",display:"flex",gap:10,alignItems:"flex-start"}}>
             <span style={{fontSize:16,flexShrink:0,color:"#E8A21A"}}>⚠</span>
-            <p style={{fontSize:12,color:"#92400e",fontWeight:700,lineHeight:1.6,fontFamily:"Lato,sans-serif",margin:0}}>State government employees in QLD are eligible for novated leasing, however earnings restrictions may apply under contract requirements. Commission may be reduced to $500 inc GST to meet these obligations.</p>
+            <p style={{fontSize:12,color:"#92400e",fontWeight:700,lineHeight:1.6,fontFamily:"Lato,sans-serif",margin:0}}>State government employees in WA, SA, TAS and QLD are eligible for novated leasing, however earnings restrictions may apply under contract requirements. Commission may be reduced to $500 ex GST to meet these obligations.</p>
           </div>}
         </div>}
         <div style={{marginTop:14,background:PSP.blue100,border:`1.5px solid ${PSP.blue}`,borderRadius:12,padding:"10px 16px"}}>
@@ -812,7 +617,7 @@ export default function App(){
     return <div>
       <div style={{background:PSP.blue100,border:`1.5px solid ${PSP.blue}`,borderRadius:12,padding:"10px 16px",marginBottom:14,display:"flex",gap:8,alignItems:"center"}}>
         <span style={{fontSize:13,fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.blue}}>Pay cycle: {cycleLabel}</span>
-        <span style={{fontSize:12,color:PSP.textMuted,fontFamily:"Lato,sans-serif"}}>— figures shown per {cycleLabel.toLowerCase()} period</span>
+        <span style={{fontSize:12,color:PSP.textMuted,fontFamily:"Lato,sans-serif"}}>— figures shown per {cycleNoun(cycleLabel)}</span>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12,marginBottom:16}}>
         <StatCard label={cycleLabel+" tax saving"} value={fmt(isEV?c.pcTaxSavingEV:c.pcTaxSavingECM)} green sub={fmt(isEV?c.taxSavingEV:c.taxSavingECM)+" per year"}/>
@@ -977,13 +782,13 @@ export default function App(){
             {runningItems.map(({key,annualVal})=>(
               <tr key={key} style={{borderBottom:`1px solid ${PSP.border}`}}>
                 <td style={{padding:"8px 0",color:PSP.text}}>{key==="fuel"?(isEV?"Charging":"Fuel"):key==="rego"?"Registration":key==="insurance"?"Insurance":key==="service"?"Service / maintenance":"Tyres"}</td>
-                <td style={{padding:"8px 0",textAlign:"right",fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.blue}}>{fmt(annualVal/cycleDiv)}/{cycleLabel.toLowerCase()}</td>
+                <td style={{padding:"8px 0",textAlign:"right",fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.blue}}>{fmt(annualVal/cycleDiv)}/{cycleNoun(cycleLabel)}</td>
                 <td style={{padding:"8px 0",textAlign:"right",color:PSP.textMuted}}>{fmt(annualVal)}/yr</td>
               </tr>
             ))}
             <tr style={{background:PSP.limeTint}}>
               <td style={{padding:"8px 0",fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.dark}}>Total running</td>
-              <td style={{padding:"8px 0",textAlign:"right",fontFamily:"Outfit,sans-serif",fontWeight:800,color:PSP.dark}}>{fmt(annualRunning/cycleDiv)}/{cycleLabel.toLowerCase()}</td>
+              <td style={{padding:"8px 0",textAlign:"right",fontFamily:"Outfit,sans-serif",fontWeight:800,color:PSP.dark}}>{fmt(annualRunning/cycleDiv)}/{cycleNoun(cycleLabel)}</td>
               <td style={{padding:"8px 0",textAlign:"right",fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.dark}}>{fmt(annualRunning)}/yr</td>
             </tr>
           </tbody>
@@ -1103,7 +908,7 @@ export default function App(){
     <div style={{maxWidth:900,margin:"0 auto",padding:"24px 16px 48px"}}>{panels[tab]()}</div>
     <div style={{background:PSP.page,borderTop:`1px solid rgba(255,255,255,0.07)`,padding:"40px 24px",textAlign:"center"}}>
       <PSPLogo height={28}/>
-      <p style={{fontSize:12,color:PSP.textOnDarkM,marginTop:16,fontFamily:"Lato,sans-serif",lineHeight:1.6,maxWidth:520,margin:"16px auto 0"}}>Positive Salary Packaging — helping working Australians get into their next car in a way that leaves them genuinely better off.</p>
+      <p style={{fontSize:12,color:PSP.textOnDarkM,marginTop:16,fontFamily:"Lato,sans-serif",lineHeight:1.6,maxWidth:520,margin:"16px auto 0"}}>Powered by Positive — novated lease calculator for accredited brokers. Generate compliant, customer-ready quotes in minutes.</p>
     </div>
     {showBudgetWarning&&<div style={{position:"fixed",top:0,left:0,width:"100%",height:"100%",background:"rgba(11,16,18,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
       <div style={{background:PSP.card,borderRadius:24,padding:"32px",maxWidth:400,width:"90%",boxShadow:PSP.shadowLg}}>
@@ -1115,3 +920,6 @@ export default function App(){
     </div>}
   </div>;
 }
+
+
+export default App;
