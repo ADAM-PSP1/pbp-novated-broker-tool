@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { generatePbpPdf } from './generatePbpPdf';
 
 const PSP = {
   blue:"#0A50D3",blue700:"#0840A8",blue100:"#E1ECFB",
@@ -302,6 +303,39 @@ export default function App(){
   function newQuote(){setEmpName("");setEmployer("");setEmpState("");setAnnualSalary(90000);setPayCycle("fortnightly");setLeaseTerm(3);setAnnualKm(15000);setVehicleMake("");setVehicleModel("");setVehicleVariant("");setCarClass("Medium Car");setFbtMethod("ECM");setDriveaway(45000);setRunningOverride({});setQuoteCommissionRate("");setEditingQuoteId(null);setTab(0);}
 
   function generatePDF(){
+    const quoteId="#PBP"+Date.now().toString().slice(-6);
+    const quoteDate=new Date().toLocaleDateString("en-AU",{day:"numeric",month:"short",year:"numeric"});
+    generatePbpPdf({
+      quoteId,
+      quoteDate,
+      broker:{name:brokerName,phone:brokerPhone,email:brokerContact},
+      customer:{name:empName,employer,state:empState},
+      vehicle:{make:vehicleMake,model:vehicleModel,variant:vehicleVariant},
+      vehicleName,
+      carClass,
+      isEV,
+      leaseTerm,
+      annualKm,
+      cycleLabel,
+      cycleDiv,
+      driveaway,
+      gstClaimed,
+      applicationFee,
+      annualSalary,
+      runningItems,
+      annualRunning,
+      monthlyRunning,
+      mgmtFee,
+      annualFuel,
+      effectiveRate:leaseRate!==null?leaseRate:(costOfFunds+brokerMargin),
+      c,
+      gstSaving,
+      gstOnPkg,
+      mainSaving,
+      totalBenefit,
+    });
+  }
+  function _generatePDF_OLD(){
     function doGen(){
       const{jsPDF}=window.jspdf;
       const doc=new jsPDF({unit:"mm",format:"a4"});
