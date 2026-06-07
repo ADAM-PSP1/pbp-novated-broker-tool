@@ -811,7 +811,7 @@ async function drawPage2(doc, d, logoData) {
   fi(doc, C.ink2); dr(doc, C.ink2);
   drawArrow(doc, M + 6 + doc.getTextWidth("Begin application") + 1.6, y + pwH - 6.3, 3.2);
   // CTA hook — the dev can wire this URL to Salesforce
-  doc.link(M + 4, y + pwH - 10, 50, 7, { url: "#start-application" });
+  doc.link(M + 4, y + pwH - 10, 50, 7, { url: "https://positivesalarypackaging.tfaforms.net/38" });
 
   // Secondary
   fi(doc, C.bg2); dr(doc, C.line); doc.setLineWidth(0.2);
