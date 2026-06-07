@@ -6,7 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 const LOGO_URL = "/powered-by-positive.svg";
-const ECM_LEARN_MORE_URL = "https://positivesalarypackaging.com.au/employee-contribution-method/";
+const ECM_LEARN_MORE_URL = "https://positivesalarypackaging.com.au/2025/02/28/how-do-you-calculate-novated-lease-fbt/";
 
 // Palette (mirrors the design system; tuned to match the mockup)
 const C = {
