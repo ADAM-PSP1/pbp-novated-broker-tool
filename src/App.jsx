@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { generatePbpPdf } from './generatePbpPdf';
+// PREVIEW STUB — in production this is your real src/generatePbpPdf.js
+function generatePbpPdf(){ alert('Preview: PDF export runs through your separate generatePbpPdf.js in production.'); return Promise.resolve(); }
 
 const PSP = {
   blue:"#0A50D3",blue700:"#0840A8",blue100:"#E1ECFB",
@@ -36,24 +37,35 @@ const PAY_CYCLES={
   monthly:    {label:"Monthly",    divisor:12},
 };
 const ATO_RESIDUAL={1:0.6563,2:0.5625,3:0.4688,4:0.3750,5:0.2813};
+// 2026-27 resident tax brackets (Stage 3 + 16%->15% second-bracket cut from 1 Jul 2026).
+// base = cumulative tax to the bottom of each band.
 const TAX_BRACKETS=[
   {min:0,     max:18200,   rate:0,    base:0},
-  {min:18201, max:45000,   rate:0.19, base:0},
-  {min:45001, max:120000,  rate:0.325,base:5092},
-  {min:120001,max:180000,  rate:0.37, base:29467},
-  {min:180001,max:Infinity,rate:0.45, base:51667},
+  {min:18201, max:45000,   rate:0.15, base:0},
+  {min:45001, max:135000,  rate:0.30, base:4020},
+  {min:135001,max:190000,  rate:0.37, base:31020},
+  {min:190001,max:Infinity,rate:0.45, base:51370},
 ];
 const MEDICARE=0.02,FBT_RATE=0.47,STAT_FRACTION=0.20;
-const LUX_DEP_LIMIT=69674,LUX_DEP_RATE=0.25,CORP_TAX=0.30;
-const FBT_EV_CAP=91387;
+const LUX_DEP_LIMIT=69883,LUX_DEP_RATE=0.25,CORP_TAX=0.30;   // 2026-27 car cost limit
+const FBT_EV_CAP=91661;                                       // 2026-27 fuel-efficient LCT threshold (FBT exemption test)
+const EV_LCT_SOFT_CAP=97000;                                  // driveaway buffer: LCT value excludes on-road costs (stamp duty, rego, CTP),
+                                                             // so a driveaway up to this can still have NIL LCT payable -> exemption stands
 const ADMIN_PIN="TheRabbitHole!@#$1234";
-const MAX_GST_CLAIM=6334,DEFERRED=2;
+const MAX_GST_CLAIM=6353,DEFERRED=2;                          // 2026-27 max GST credit = 69,883 / 11
 const TABS=["Inputs","Results","Salary","Savings","Quote","Repository"];
 
 function calcTax(inc){
   if(inc<=0)return 0;
   const b=TAX_BRACKETS.find(b=>inc>=b.min&&inc<=b.max)||TAX_BRACKETS[4];
   return Math.round(b.base+(inc-b.min)*b.rate+inc*MEDICARE);
+}
+// HELP/HECS — 2026-27 marginal repayment system + RFBA gross-up (Type 2)
+const HELP_T1=69528, HELP_T2=129717, RFBA_GROSSUP=1.8868;
+function calcHelp(ri){
+  if(ri<=HELP_T1)return 0;
+  const marginal=0.15*Math.max(0,ri-HELP_T1)+0.17*Math.max(0,ri-HELP_T2);
+  return Math.round(Math.min(marginal,0.10*ri));
 }
 function pmtM(annRate,years,pv,fv){
   const r=annRate/12,n=years*12-DEFERRED;
@@ -96,11 +108,7 @@ const cycleNoun=label=>({weekly:"week",fortnightly:"fortnight",monthly:"month","
 
 // ── UI Components ─────────────────────────────────────────
 function PSPLogo({height=36}){
-  return <img
-    src="/powered-by-positive-white.svg"
-    alt="Powered by Positive"
-    style={{height:height+"px",width:"auto",display:"block",userSelect:"none"}}
-  />;
+  return <span style={{fontFamily:"Outfit,sans-serif",fontWeight:900,fontSize:(height*0.46)+"px",letterSpacing:"-0.02em",userSelect:"none",lineHeight:1}}><span style={{color:"#A1E220"}}>Powered by </span><span style={{color:"#FFFFFA"}}>Positive</span></span>;
 }
 function Lbl({children}){return <p style={{fontSize:12,fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.textMuted,marginBottom:5,letterSpacing:"0.02em",textTransform:"uppercase"}}>{children}</p>;}
 function F({label,children}){return <div><Lbl>{label}</Lbl>{children}</div>;}
@@ -190,11 +198,18 @@ function App(){
   const [savedQuotes,setSavedQuotes]=useState([]);
   const [editingQuoteId,setEditingQuoteId]=useState(null);
   const [showBudgetWarning,setShowBudgetWarning]=useState(false);
+  const [hasHelp,setHasHelp]=useState(false);
+  const [lctConfirmed,setLctConfirmed]=useState(false);
 
   const isEV=fbtMethod==="EV";
   const is4WD=carClass==="4WD"||carClass==="4WD Utilities";
-  const evCapExceeded=carClass==="EV"&&driveaway>FBT_EV_CAP;
-  const fbtLocked=carClass==="EV"&&!evCapExceeded;
+  const evCar=carClass==="EV";
+  const evUnderCap=evCar&&driveaway<=FBT_EV_CAP;                                  // clearly under threshold — exempt
+  const evSoftZone=evCar&&driveaway>FBT_EV_CAP&&driveaway<=EV_LCT_SOFT_CAP;        // needs broker LCT confirmation
+  const evOverSoftCap=evCar&&driveaway>EV_LCT_SOFT_CAP;                            // LCT almost certainly payable — no exemption
+  const evExemptEligible=evUnderCap||(evSoftZone&&lctConfirmed);
+  const evCapExceeded=evCar&&!evExemptEligible;
+  const fbtLocked=evCar;   // EV method controlled by LCT zone + confirmation, not the dropdown
   const method=fbtMethod;
 
   const gstFull=Math.round(driveaway/11);
@@ -233,8 +248,10 @@ function App(){
   function updateRunningTable(cls,key,val){setRunningTable(p=>({...p,[cls]:{...p[cls],[key]:+val}}));}
   function handleCarClass(v){
     setCarClass(v);
-    setFbtMethod(v==="EV"?"EV":"ECM");
+    setLctConfirmed(false);
     setRunningOverride({});
+    if(v==="EV")setFbtMethod(driveaway<=FBT_EV_CAP?"EV":"ECM");
+    else setFbtMethod("ECM");
   }
   function handleRunningOverride(key,val){setRunningOverride(p=>({...p,[key]:+val}));setShowBudgetWarning(true);}
 
@@ -258,6 +275,13 @@ function App(){
     const ecm=fbtMethod==="ECM"?fbtT:0;
     const ssE=at-ecm,ssV=at;
     const tG=calcTax(annualSalary),tE=calcTax(annualSalary-ssE),tV=calcTax(annualSalary-ssV);
+    // HELP/HECS repayment income includes RFBA. EV is FBT-exempt but the notional
+    // grossed-up value is still reportable (Type 2 gross-up); ECM offsets the taxable
+    // value to nil, so no RFBA arises.
+    const rfbaEV=(driveaway*STAT_FRACTION)*RFBA_GROSSUP;
+    const helpNoSP=calcHelp(annualSalary);
+    const helpECM=calcHelp(annualSalary-ssE);
+    const helpEV=calcHelp((annualSalary-ssV)+rfbaEV);
     const nN=annualSalary-tG-at;
     const nE=(annualSalary-ssE)-tE-ecm;
     const nV=(annualSalary-ssV)-tV;
@@ -272,6 +296,8 @@ function App(){
       taxGross:tG,taxECM:tE,taxEV:tV,netNoSP:nN,netECM:nE,netEV:nV,
       taxSavingECM:svE,taxSavingEV:svV,savingECM:sE,savingEV:sV,
       gstOnPackageECM:gE2,gstOnPackageEV:gV,div,
+      rfbaEV,helpNoSP,helpECM,helpEV,
+      pcHelpNoSP:pc(helpNoSP),pcHelpECM:pc(helpECM),pcHelpEV:pc(helpEV),
       pcAnnualTotal:pc(at),pcMFin:pc(mFin*12),
       pcSsECM:pc(ssE),pcSsEV:pc(ssV),
       pcNetNoSP:pc(nN),pcNetECM:pc(nE),pcNetEV:pc(nV),
@@ -286,7 +312,7 @@ function App(){
   const totalBenefit=mainSaving+gstSaving+gstOnPkg;
 
   function saveQuote(){
-    const snap={id:editingQuoteId||Date.now().toString(),savedAt:new Date().toISOString(),brokerName,brokerPhone,brokerContact,empName,employer,empState,annualSalary,payCycle,leaseTerm,annualKm,vehicleMake,vehicleModel,vehicleVariant,carClass,fbtMethod,driveaway,runningOverride,quoteCommissionRate,commissionFee:c.commFee,effectiveCommissionRate,totalBenefit,mainSaving,gstSaving,gstOnPkg};
+    const snap={id:editingQuoteId||Date.now().toString(),savedAt:new Date().toISOString(),brokerName,brokerPhone,brokerContact,empName,employer,empState,annualSalary,payCycle,leaseTerm,annualKm,vehicleMake,vehicleModel,vehicleVariant,carClass,fbtMethod,driveaway,runningOverride,quoteCommissionRate,commissionFee:c.commFee,effectiveCommissionRate,totalBenefit,mainSaving,gstSaving,gstOnPkg,hasHelp,lctConfirmed};
     setSavedQuotes(prev=>{const idx=prev.findIndex(q=>q.id===snap.id);if(idx>=0){const n=[...prev];n[idx]=snap;return n;}return[...prev,snap];});
     setEditingQuoteId(snap.id);setTab(5);
   }
@@ -297,10 +323,12 @@ function App(){
     setVehicleMake(q.vehicleMake||"");setVehicleModel(q.vehicleModel||"");setVehicleVariant(q.vehicleVariant||"");
     setCarClass(q.carClass);setFbtMethod(q.fbtMethod);setDriveaway(q.driveaway);
     setRunningOverride(q.runningOverride||{});setQuoteCommissionRate(q.quoteCommissionRate||"");
+    setHasHelp(!!q.hasHelp);
+    setLctConfirmed(!!q.lctConfirmed);
     setEditingQuoteId(q.id);setTab(0);
   }
   function deleteQuote(id){setSavedQuotes(prev=>prev.filter(q=>q.id!==id));if(editingQuoteId===id)setEditingQuoteId(null);}
-  function newQuote(){setEmpName("");setEmployer("");setEmpState("");setAnnualSalary(90000);setPayCycle("fortnightly");setLeaseTerm(3);setAnnualKm(15000);setVehicleMake("");setVehicleModel("");setVehicleVariant("");setCarClass("Medium Car");setFbtMethod("ECM");setDriveaway(45000);setRunningOverride({});setQuoteCommissionRate("");setEditingQuoteId(null);setTab(0);}
+  function newQuote(){setEmpName("");setEmployer("");setEmpState("");setAnnualSalary(90000);setPayCycle("fortnightly");setLeaseTerm(3);setAnnualKm(15000);setVehicleMake("");setVehicleModel("");setVehicleVariant("");setCarClass("Medium Car");setFbtMethod("ECM");setDriveaway(45000);setRunningOverride({});setQuoteCommissionRate("");setHasHelp(false);setLctConfirmed(false);setEditingQuoteId(null);setTab(0);}
 
   function generatePDF(){
     // Hands all live state to the new layout generator (see src/generatePbpPdf.js).
@@ -365,6 +393,7 @@ function App(){
           <F label="Pay cycle"><select value={payCycle} onChange={e=>setPayCycle(e.target.value)}>{Object.entries(PAY_CYCLES).map(([k,{label}])=><option key={k} value={k}>{label}</option>)}</select></F>
           <F label="Lease term"><select value={leaseTerm} onChange={e=>setLeaseTerm(+e.target.value)}>{[1,2,3,4,5].map(t=><option key={t} value={t}>{t} year{t>1?"s":""}</option>)}</select></F>
           <F label="Annual km"><select value={annualKm} onChange={e=>setAnnualKm(+e.target.value)}>{Array.from({length:20},(_,i)=>(i+1)*2500).map(k=><option key={k} value={k}>{k.toLocaleString()} km</option>)}</select></F>
+          <F label="HELP / HECS debt"><select value={hasHelp?"yes":"no"} onChange={e=>setHasHelp(e.target.value==="yes")}><option value="no">No</option><option value="yes">Yes</option></select></F>
         </Grid>
       </Card>
       <Card>
@@ -379,12 +408,31 @@ function App(){
               <option value="ECM">ECM - Employee contribution method</option>
               <option value="EV">EV - FBT exempt</option>
             </select>
-            {fbtLocked&&<p style={{fontSize:11,color:PSP.textMuted,fontFamily:"Lato,sans-serif",marginTop:4}}>Locked — EV FBT exemption applies under {fmt(FBT_EV_CAP)}</p>}
-            {evCapExceeded&&<p style={{fontSize:11,color:"#E8A21A",fontFamily:"Lato,sans-serif",marginTop:4}}>⚠ Driveaway exceeds FBT exemption cap ({fmt(FBT_EV_CAP)}) — ECM applies</p>}
+            {evUnderCap&&<p style={{fontSize:11,color:PSP.textMuted,fontFamily:"Lato,sans-serif",marginTop:4}}>Locked — EV FBT exemption applies under {fmt(FBT_EV_CAP)}</p>}
+            {evSoftZone&&!lctConfirmed&&<p style={{fontSize:11,color:"#E8A21A",fontFamily:"Lato,sans-serif",marginTop:4}}>⚠ Over {fmt(FBT_EV_CAP)} — confirm no LCT payable (below) to apply the EV exemption</p>}
+            {evSoftZone&&lctConfirmed&&<p style={{fontSize:11,color:PSP.blue,fontFamily:"Lato,sans-serif",marginTop:4,fontWeight:700}}>✓ EV FBT exemption applied — no LCT confirmed</p>}
+            {evOverSoftCap&&<p style={{fontSize:11,color:"#E8A21A",fontFamily:"Lato,sans-serif",marginTop:4}}>⚠ Over {fmt(EV_LCT_SOFT_CAP)} — LCT applies, exemption not available — ECM applies</p>}
           </F>
-          <F label="Driveaway cost ($)"><input type="number" value={driveaway} onChange={e=>{const v=+e.target.value;setDriveaway(v);if(carClass==="EV")setFbtMethod(v>FBT_EV_CAP?"ECM":"EV");}}/></F>
+          <F label="Driveaway cost ($)"><input type="number" value={driveaway} onChange={e=>{const v=+e.target.value;setDriveaway(v);if(carClass==="EV"){if(v<=FBT_EV_CAP)setFbtMethod("EV");else if(v<=EV_LCT_SOFT_CAP)setFbtMethod(lctConfirmed?"EV":"ECM");else{setFbtMethod("ECM");setLctConfirmed(false);}}}}/></F>
           <F label={"GST claimed (max "+fmt(MAX_GST_CLAIM)+")"}><input type="text" value={fmt(gstClaimed)+(gstExcess>0?" ("+fmt(gstExcess)+" financed)":"")} readOnly style={{background:PSP.blue100,color:gstExcess>0?"#E8A21A":PSP.blue,cursor:"default"}}/></F>
         </Grid>
+        {evSoftZone&&<div style={{marginTop:14,padding:"16px 18px",background:"rgba(232,162,26,0.10)",border:"1.5px solid #E8A21A",borderRadius:16}}>
+          <p style={{fontSize:13,fontFamily:"Outfit,sans-serif",fontWeight:700,color:"#92400e",marginBottom:8}}>⚠ Driveaway over {fmt(FBT_EV_CAP)} — LCT check required</p>
+          <p style={{fontSize:12,color:PSP.textMuted,lineHeight:1.7,fontFamily:"Lato,sans-serif",marginBottom:14}}>
+            The EV FBT exemption applies only where the car's <strong>LCT value</strong> did not exceed the fuel-efficient threshold ({fmt(FBT_EV_CAP)}) at first retail sale. The LCT value excludes on-road costs (stamp duty, registration, CTP), so a driveaway up to ~{fmt(EV_LCT_SOFT_CAP)} can still fall under the threshold with <strong>no LCT payable</strong>. The deciding factor is the purchase contract — if it shows no LCT, the exemption stands.
+          </p>
+          <label style={{display:"flex",gap:10,alignItems:"flex-start",cursor:"pointer"}}>
+            <input type="checkbox" checked={lctConfirmed} onChange={e=>{const on=e.target.checked;setLctConfirmed(on);setFbtMethod(on?"EV":"ECM");}} style={{marginTop:2}}/>
+            <span style={{fontSize:13,fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.dark,lineHeight:1.5}}>I confirm the purchase contract shows NO Luxury Car Tax (LCT) payable on this vehicle — apply the EV FBT exemption.</span>
+          </label>
+          {lctConfirmed&&<div style={{marginTop:12,background:PSP.blue100,border:`1px solid ${PSP.blue}`,borderRadius:12,padding:"10px 14px"}}>
+            <p style={{fontSize:12,fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.blue,margin:0}}>✓ EV FBT exemption applied — confirm the LCT position is documented on file.</p>
+          </div>}
+        </div>}
+        {evOverSoftCap&&<div style={{marginTop:14,padding:"14px 16px",background:"rgba(211,58,44,0.08)",border:"1.5px solid #D33A2C",borderRadius:16,display:"flex",gap:10,alignItems:"flex-start"}}>
+          <span style={{fontSize:16,flexShrink:0,color:"#D33A2C"}}>⚠</span>
+          <p style={{fontSize:12,color:"#D33A2C",fontWeight:700,lineHeight:1.6,fontFamily:"Lato,sans-serif",margin:0}}>Driveaway exceeds {fmt(EV_LCT_SOFT_CAP)}. Even after stripping on-road costs, the LCT value will almost certainly exceed {fmt(FBT_EV_CAP)} and LCT will be payable — the EV FBT exemption is not available. ECM applies.</p>
+        </div>}
         {commissionIncluded&&<div style={{marginTop:14,padding:"16px 18px",background:PSP.limeTint,border:`1.5px solid rgba(161,226,32,0.35)`,borderRadius:16}}>
           <p style={{fontSize:13,fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.blue,marginBottom:10}}>Commission rate for this quote</p>
           <Grid>
@@ -614,6 +662,9 @@ function App(){
 
   function renderSalary(){
     const m=method;
+    const helpActive=isEV?c.helpEV:c.helpECM;
+    const helpDelta=helpActive-c.helpNoSP;   // +ve = extra repayment, -ve = saving
+    const helpExtra=helpDelta>0;
     return <div>
       <div style={{background:PSP.blue100,border:`1.5px solid ${PSP.blue}`,borderRadius:12,padding:"10px 16px",marginBottom:14,display:"flex",gap:8,alignItems:"center"}}>
         <span style={{fontSize:13,fontFamily:"Outfit,sans-serif",fontWeight:700,color:PSP.blue}}>Pay cycle: {cycleLabel}</span>
@@ -646,6 +697,30 @@ function App(){
           ["Annual tax saving",        0,              fmt(c.taxSavingECM), fmt(c.taxSavingEV)],
         ]}/>
       </Card>
+      {hasHelp&&<Card>
+        <SectionTitle icon="🎓" title="HELP / HECS repayment" badge="2026-27"/>
+        <p style={{fontSize:12,color:PSP.textMuted,marginBottom:14,fontFamily:"Lato,sans-serif",lineHeight:1.6}}>
+          {isEV
+            ?"Although the EV is FBT-exempt, its notional grossed-up value is still a Reportable Fringe Benefits Amount (RFBA) and is added back to repayment income — which can increase compulsory HELP repayments. Model the net position, not just the headline tax saving."
+            :"Under ECM the FBT taxable value is offset to nil, so no RFBA arises. The pre-tax salary sacrifice lowers repayment income, which can reduce the compulsory HELP repayment."}
+        </p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:12,marginBottom:16}}>
+          <StatCard label="Annual HELP — no packaging" value={fmt(c.helpNoSP)}/>
+          <div style={{background:helpExtra?"rgba(232,162,26,0.10)":PSP.card,border:`1.5px solid ${helpExtra?"#E8A21A":PSP.lime}`,borderRadius:16,padding:"18px 20px",boxShadow:PSP.shadowMd}}>
+            <p style={{fontSize:11,fontFamily:"Outfit,sans-serif",fontWeight:700,color:helpExtra?"#92400e":PSP.textMuted,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.06em"}}>{helpExtra?"Extra HELP per year":"HELP saving per year"}</p>
+            <p style={{fontSize:26,fontFamily:"Outfit,sans-serif",fontWeight:900,color:helpExtra?"#92400e":PSP.dark,margin:0,lineHeight:1}}>{fmt(Math.abs(helpDelta))}</p>
+            <p style={{fontSize:12,color:PSP.textMuted,marginTop:6,fontFamily:"Lato,sans-serif"}}>{fmt(Math.abs(helpDelta)*leaseTerm)} over {leaseTerm} yr{leaseTerm>1?"s":""}</p>
+          </div>
+        </div>
+        <MTable method={m} rows={[
+          ["Reportable fringe benefits (RFBA)",   0,            0,                       c.rfbaEV],
+          ["HELP repayment income (annual)",      annualSalary, annualSalary-c.ssECM,    (annualSalary-c.ssEV)+c.rfbaEV],
+          ["Annual HELP repayment",               c.helpNoSP,   c.helpECM,               c.helpEV],
+        ]}/>
+        <p style={{fontSize:11,color:PSP.textMuted,marginTop:12,fontFamily:"Lato,sans-serif",lineHeight:1.6}}>
+          2026-27 thresholds: 15c per $1 over {fmt(HELP_T1)}, plus 17c per $1 over {fmt(HELP_T2)}, capped at 10% of repayment income (whichever is lower). RFBA grossed up at 1.8868 (Type 2). Repayment income also includes reportable super contributions and net investment losses, which are not modelled here. This estimate is not shown on the customer PDF.
+        </p>
+      </Card>}
     </div>;
   }
 
@@ -880,8 +955,9 @@ function App(){
       ${GFONTS}
       *{box-sizing:border-box;margin:0;padding:0;}
       body{font-family:'Lato',sans-serif;background:${PSP.page};}
-      input,select{background:${PSP.card};border:1.5px solid ${PSP.border};border-radius:10px;padding:10px 13px;font-size:14px;font-family:'Lato',sans-serif;width:100%;color:${PSP.text};outline:none;transition:border-color 140ms,box-shadow 140ms;}
-      input:focus,select:focus{border-color:${PSP.blue};box-shadow:0 0 0 3px rgba(10,80,211,0.18);}
+      input:not([type=checkbox]),select{background:${PSP.card};border:1.5px solid ${PSP.border};border-radius:10px;padding:10px 13px;font-size:14px;font-family:'Lato',sans-serif;width:100%;color:${PSP.text};outline:none;transition:border-color 140ms,box-shadow 140ms;}
+      input:not([type=checkbox]):focus,select:focus{border-color:${PSP.blue};box-shadow:0 0 0 3px rgba(10,80,211,0.18);}
+      input[type=checkbox]{width:18px;height:18px;accent-color:${PSP.blue};cursor:pointer;flex-shrink:0;}
       button{cursor:pointer;font-family:'Outfit',sans-serif;}
     `}</style>
     <div style={{background:PSP.page,borderBottom:`1px solid rgba(255,255,255,0.07)`,padding:"0 24px"}}>
